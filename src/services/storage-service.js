@@ -48,18 +48,36 @@ export const storageService = {
   getBookmarks() {
     return readJSON(KEYS.bookmarks, [])
   },
+  /** Returns { added, bookmarks } so callers can mirror the change elsewhere (e.g. sync). */
   toggleBookmark(book, chapter, verse) {
     const bookmarks = this.getBookmarks()
     const idx = bookmarks.findIndex(
       (b) => b.book === book && b.chapter === chapter && b.verse === verse
     )
+    let added
     if (idx >= 0) {
       bookmarks.splice(idx, 1)
+      added = false
     } else {
       bookmarks.push({ book, chapter, verse })
+      added = true
     }
     writeJSON(KEYS.bookmarks, bookmarks)
-    return bookmarks
+    return { added, bookmarks }
+  },
+  /** Unions remote bookmarks into local storage without duplicating existing ones. */
+  mergeBookmarks(remoteBookmarks) {
+    const local = this.getBookmarks()
+    const key = (b) => `${b.book}:${b.chapter}:${b.verse}`
+    const seen = new Set(local.map(key))
+    for (const b of remoteBookmarks) {
+      if (!seen.has(key(b))) {
+        local.push(b)
+        seen.add(key(b))
+      }
+    }
+    writeJSON(KEYS.bookmarks, local)
+    return local
   },
   isBookmarked(book, chapter, verse) {
     return this.getBookmarks().some(

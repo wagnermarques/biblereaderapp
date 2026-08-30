@@ -3,6 +3,7 @@ import './chapter-view.js'
 import './search-view.js'
 import './book-list-view.js'
 import './purpose-view.js'
+import './account-view.js'
 import './nav-accordion.js'
 import {
   createRouter,
@@ -10,9 +11,12 @@ import {
   navigateHome,
   navigateToBooks,
   navigateToPurpose,
+  navigateToAccount,
 } from '../router.js'
 import { storageService } from '../services/storage-service.js'
 import { searchService } from '../services/search-service.js'
+import { authService } from '../services/auth-service.js'
+import { syncService } from '../services/sync-service.js'
 
 export class AppShell extends LitElement {
   static properties = {
@@ -84,11 +88,26 @@ export class AppShell extends LitElement {
     })
     this._applyTheme()
     searchService.warmUp()
+
+    // Pull the signed-in user's bookmarks into local storage whenever a session
+    // appears — both right after sign-in and when a persisted session is
+    // restored on page load.
+    let syncedUserId = null
+    this._authUnsubscribe = authService.subscribe((session) => {
+      const userId = session?.user?.id ?? null
+      if (userId && userId !== syncedUserId) {
+        syncedUserId = userId
+        syncService.pullBookmarks(userId)
+      } else if (!userId) {
+        syncedUserId = null
+      }
+    })
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
     this._unsubscribe?.()
+    this._authUnsubscribe?.()
   }
 
   _applyTheme() {
@@ -152,6 +171,11 @@ export class AppShell extends LitElement {
               <md-list-item type="button" @click=${navigateToPurpose}>Objetivo</md-list-item>
             </md-list>
           </nav-accordion>
+          <nav-accordion label="Conta">
+            <md-list>
+              <md-list-item type="button" @click=${navigateToAccount}>Minha conta</md-list-item>
+            </md-list>
+          </nav-accordion>
         </div>
       </md-navigation-drawer-modal>
 
@@ -175,6 +199,8 @@ export class AppShell extends LitElement {
         return html`<book-list-view></book-list-view>`
       case 'about-purpose':
         return html`<purpose-view></purpose-view>`
+      case 'account':
+        return html`<account-view></account-view>`
       default:
         return html`
           <div class="home">

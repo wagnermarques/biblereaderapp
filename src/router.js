@@ -3,6 +3,7 @@
  *   #/                      -> home
  *   #/livros                -> book list page
  *   #/sobre/objetivo        -> about/purpose page
+ *   #/conta                 -> account/login page
  *   #/:book                 -> chapter 1 of that book
  *   #/:book/:chapter        -> reading view
  *   #/search?q=...          -> search results
@@ -22,6 +23,9 @@ function parseHash() {
   }
   if (segments[0] === 'sobre' && segments[1] === 'objetivo') {
     return { name: 'about-purpose' }
+  }
+  if (segments[0] === 'conta') {
+    return { name: 'account' }
   }
   if (segments.length === 0) {
     return { name: 'home' }
@@ -57,4 +61,8 @@ export function navigateToBooks() {
 
 export function navigateToPurpose() {
   location.hash = '#/sobre/objetivo'
+}
+
+export function navigateToAccount() {
+  location.hash = '#/conta'
 }

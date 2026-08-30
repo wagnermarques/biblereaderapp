@@ -1,6 +1,8 @@
 import { LitElement, html, css } from 'lit'
 import { bibleDataService } from '../services/bible-data-service.js'
 import { storageService } from '../services/storage-service.js'
+import { authService } from '../services/auth-service.js'
+import { syncService } from '../services/sync-service.js'
 import { navigateToChapter } from '../router.js'
 
 export class ChapterView extends LitElement {
@@ -88,8 +90,14 @@ export class ChapterView extends LitElement {
   }
 
   _toggleBookmark(verseNum) {
-    storageService.toggleBookmark(this.bookId, this.chapter, verseNum)
+    const { added } = storageService.toggleBookmark(this.bookId, this.chapter, verseNum)
     this.requestUpdate()
+
+    const userId = authService.getCurrentUser()?.id
+    if (userId) {
+      if (added) syncService.pushBookmarkAdded(userId, this.bookId, this.chapter, verseNum)
+      else syncService.pushBookmarkRemoved(userId, this.bookId, this.chapter, verseNum)
+    }
   }
 
   _goToChapter(delta) {

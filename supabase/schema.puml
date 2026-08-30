@@ -1,0 +1,56 @@
+@startuml Biblia PWA - Supabase schema
+
+title Bíblia PWA — esquema Supabase (login + favoritos sincronizados)
+
+entity "auth.users" as users {
+  * id : uuid
+  --
+  email : text
+  encrypted_password : text
+  created_at : timestamptz
+}
+
+note right of users
+  Gerenciada pelo Supabase Auth
+  (schema auth, fora do nosso controle).
+  Criada em auth.signUp().
+end note
+
+entity "public.profiles" as profiles {
+  * id : uuid
+  --
+  role : text = 'user'
+  created_at : timestamptz
+}
+
+note bottom of profiles
+  RLS: usuário só enxerga a própria linha
+  (auth.uid() = id).
+  Criada automaticamente por um trigger
+  em auth.users (on_auth_user_created).
+  `role` existe para uma futura área admin,
+  mas nada no app ainda a utiliza.
+end note
+
+entity "public.bookmarks" as bookmarks {
+  * id : uuid
+  --
+  * user_id : uuid
+  * book_id : text
+  * chapter : integer
+  * verse : integer
+  created_at : timestamptz
+}
+
+note bottom of bookmarks
+  RLS: usuário só enxerga/insere/remove
+  as próprias linhas (auth.uid() = user_id).
+  Chave única: (user_id, book_id, chapter, verse).
+  Espelha os favoritos guardados em
+  localStorage no dispositivo.
+end note
+
+users ||--|| profiles : "id (1:1, via trigger)"
+users ||--o{ bookmarks : "user_id (1:N)"
+
+@enduml

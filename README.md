@@ -7,7 +7,8 @@ Leitor de Bíblia offline, instalável, feito com Web Components (Lit + Material
 - **Web Components**: [`@material/web`](https://github.com/material-components/material-web) (Material 3) para os componentes de UI, [Lit](https://lit.dev) para os componentes da aplicação.
 - **Build**: [Vite](https://vitejs.dev) + [`vite-plugin-pwa`](https://vite-pwa-org.netlify.app/) (manifest + service worker via Workbox).
 - **Roteamento**: hash router simples (`#/joão/3`) — funciona em GitHub Pages sem configuração de servidor.
-- **Estado**: `localStorage` para tema, tamanho de fonte, favoritos e destaques; nenhum backend.
+- **Estado**: `localStorage` para tema, tamanho de fonte e favoritos — funciona 100% offline sem nenhuma conta.
+- **Login (opcional)**: [Supabase](https://supabase.com) (Postgres + Auth) só para sincronizar favoritos entre dispositivos de quem opta por criar conta. Sem configurar, o app funciona exatamente como antes — sem login, sem coleta de dados.
 
 ## Texto bíblico
 
@@ -28,6 +29,22 @@ node scripts/import-bible-data.mjs source.json
 
 Se quiser usar outra tradução, **verifique a licença antes de publicar** — muitas revisões modernas (NVI, ARA, NAA etc.) são protegidas por direitos autorais e não podem ser redistribuídas livremente num site público. `scripts/import-bible-data.mjs` espera o formato `books[].chapters[].verses[].text` usado pela JFAAL; adapte o script se a fonte tiver outro formato.
 
+## Login e sincronização (opcional)
+
+O login existe só para sincronizar favoritos entre dispositivos — nada no app exige conta. Para habilitar:
+
+1. Crie um projeto grátis em [supabase.com](https://supabase.com).
+2. No painel do projeto, abra **SQL Editor** e rode o conteúdo de `supabase/migrations/0001_init.sql` (cria as tabelas `profiles`/`bookmarks` e as políticas de Row Level Security — cada usuário só acessa os próprios dados).
+3. Em **Project Settings → API**, copie a **Project URL** e a **anon public key**.
+4. Para desenvolvimento local, crie um `.env.local` (veja `.env.example`) com:
+   ```
+   VITE_SUPABASE_URL=https://xxxxx.supabase.co
+   VITE_SUPABASE_ANON_KEY=eyJ...
+   ```
+5. Para o deploy, adicione as mesmas duas chaves em **Settings → Secrets and variables → Actions** do repositório GitHub (`VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`) — o workflow em `.github/workflows/deploy.yml` já as injeta no build.
+
+A chave anon é pública por design (o controle de acesso é feito pelas políticas RLS no banco, não por manter a chave em segredo), então não há problema em ela ir para o bundle final.
+
 ## Desenvolvimento
 
 ```bash
@@ -47,8 +64,10 @@ npm run preview   # pré-visualiza o build de produção
 
 ```
 src/
-  components/     # <app-shell>, <bible-nav>, <chapter-view>, <search-view>
-  services/       # bible-data-service, search-service, storage-service
+  components/     # <app-shell>, <bible-nav>, <chapter-view>, <search-view>,
+                  # <book-list-view>, <purpose-view>, <account-view>, <nav-accordion>
+  services/       # bible-data-service, search-service, storage-service,
+                  # supabase-client, auth-service, sync-service
   styles/         # tokens de cor Material 3 (tema claro/escuro)
   router.js       # hash router
   main.js
@@ -57,6 +76,8 @@ public/
   icons/          # ícones do PWA (placeholders — troque pelos definitivos)
 scripts/
   import-bible-data.mjs   # converte uma fonte JSON externa para o formato usado aqui
+supabase/
+  migrations/0001_init.sql   # schema + RLS para login/favoritos sincronizados
 .github/workflows/deploy.yml
 ```
 
@@ -65,11 +86,12 @@ scripts/
 - Navegação por livros (Antigo/Novo Testamento) em menu lateral
 - Leitura por capítulo com navegação anterior/próximo
 - Busca em texto completo (ignora acentos)
-- Favoritos e destaque de versículos (clique no versículo)
+- Favoritos de versículos (clique no versículo)
 - Tema claro/escuro/sistema
 - Ajuste de tamanho de fonte
 - Funciona offline após o primeiro carregamento (todo o texto bíblico é cacheado)
 - Instalável como app (PWA)
+- Login opcional (e-mail/senha via Supabase) para sincronizar favoritos entre dispositivos
 
 ## Próximos passos sugeridos
 
