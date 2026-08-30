@@ -9,8 +9,21 @@
  *   #/search?q=...          -> search results
  */
 
+// Supabase's email-confirmation/magic-link/password-reset redirects deliver
+// the session as #access_token=...&type=signup etc. — since our own routing
+// also lives in the URL hash, that fragment would otherwise get parsed as a
+// (nonsense) book id. Recognize it and treat it as the account page instead.
+function isAuthCallbackHash(hash) {
+  return /(^|[&#])access_token=|(^|[&#])error_description=/.test(hash)
+}
+
 function parseHash() {
   const hash = location.hash.replace(/^#\/?/, '')
+
+  if (isAuthCallbackHash(hash)) {
+    return { name: 'account' }
+  }
+
   const [pathPart, queryPart] = hash.split('?')
   const segments = pathPart.split('/').filter(Boolean)
   const query = Object.fromEntries(new URLSearchParams(queryPart ?? ''))
@@ -40,6 +53,18 @@ export function createRouter(onChange) {
   const handler = () => onChange(parseHash())
   window.addEventListener('hashchange', handler)
   handler() // fire once for the initial URL
+
+  // Supabase's auth SDK reads the tokens out of the hash on its own (via
+  // detectSessionInUrl) — once it's had a tick to do that, scrub them from
+  // the visible URL/history rather than leaving a raw access token sitting
+  // in the address bar.
+  const initialHash = location.hash.replace(/^#\/?/, '')
+  if (isAuthCallbackHash(initialHash)) {
+    setTimeout(() => {
+      history.replaceState(null, '', `${location.pathname}${location.search}#/conta`)
+    }, 0)
+  }
+
   return () => window.removeEventListener('hashchange', handler)
 }
 
