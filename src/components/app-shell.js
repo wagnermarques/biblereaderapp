@@ -1,8 +1,16 @@
 import { LitElement, html, css } from 'lit'
-import './bible-nav.js'
 import './chapter-view.js'
 import './search-view.js'
-import { createRouter, navigateToSearch, navigateHome } from '../router.js'
+import './book-list-view.js'
+import './purpose-view.js'
+import './nav-accordion.js'
+import {
+  createRouter,
+  navigateToSearch,
+  navigateHome,
+  navigateToBooks,
+  navigateToPurpose,
+} from '../router.js'
 import { storageService } from '../services/storage-service.js'
 import { searchService } from '../services/search-service.js'
 
@@ -30,7 +38,10 @@ export class AppShell extends LitElement {
       border-bottom: 1px solid var(--md-sys-color-outline);
       position: sticky;
       top: 0;
-      z-index: 10;
+      /* No explicit z-index: the modal drawer is meant to overlay the whole
+         screen (including this bar) when open, matching Material's modal
+         navigation drawer pattern — DOM order (drawer markup comes after
+         this bar) already puts it on top without one. */
     }
     .top-bar h1 {
       font-size: 1.1rem;
@@ -51,6 +62,9 @@ export class AppShell extends LitElement {
     }
     .drawer-content {
       padding-top: 8px;
+    }
+    .drawer-content nav-accordion md-list {
+      padding-left: 16px;
     }
   `
 
@@ -128,12 +142,16 @@ export class AppShell extends LitElement {
         @navigation-drawer-changed=${(e) => (this._drawerOpen = e.detail.opened)}
       >
         <div class="drawer-content">
-          <bible-nav
-            active-book-id=${this._route.book ?? ''}
-            @book-selected=${(e) => {
-              location.hash = `#/${e.detail.bookId}`
-            }}
-          ></bible-nav>
+          <nav-accordion label="Livros" expanded>
+            <md-list>
+              <md-list-item type="button" @click=${navigateToBooks}>Listar livros</md-list-item>
+            </md-list>
+          </nav-accordion>
+          <nav-accordion label="Sobre">
+            <md-list>
+              <md-list-item type="button" @click=${navigateToPurpose}>Objetivo</md-list-item>
+            </md-list>
+          </nav-accordion>
         </div>
       </md-navigation-drawer-modal>
 
@@ -153,10 +171,14 @@ export class AppShell extends LitElement {
         `
       case 'search':
         return html`<search-view .query=${this._route.query.q ?? ''}></search-view>`
+      case 'books':
+        return html`<book-list-view></book-list-view>`
+      case 'about-purpose':
+        return html`<purpose-view></purpose-view>`
       default:
         return html`
           <div class="home">
-            <p>Selecione um livro no menu para começar a leitura.</p>
+            <p>Abra o menu e toque em "Livros → Listar livros" para começar a leitura.</p>
           </div>
         `
     }

@@ -1,6 +1,8 @@
 /**
  * Minimal hash router. Routes:
- *   #/                      -> book list
+ *   #/                      -> home
+ *   #/livros                -> book list page
+ *   #/sobre/objetivo        -> about/purpose page
  *   #/:book                 -> chapter 1 of that book
  *   #/:book/:chapter        -> reading view
  *   #/search?q=...          -> search results
@@ -14,6 +16,12 @@ function parseHash() {
 
   if (segments[0] === 'search') {
     return { name: 'search', query }
+  }
+  if (segments[0] === 'livros') {
+    return { name: 'books' }
+  }
+  if (segments[0] === 'sobre' && segments[1] === 'objetivo') {
+    return { name: 'about-purpose' }
   }
   if (segments.length === 0) {
     return { name: 'home' }
@@ -41,4 +49,12 @@ export function navigateToSearch(q) {
 
 export function navigateHome() {
   location.hash = '#/'
+}
+
+export function navigateToBooks() {
+  location.hash = '#/livros'
+}
+
+export function navigateToPurpose() {
+  location.hash = '#/sobre/objetivo'
 }
