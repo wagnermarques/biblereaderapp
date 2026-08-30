@@ -41,7 +41,7 @@ O login existe só para sincronizar favoritos entre dispositivos — nada no app
    VITE_SUPABASE_URL=https://xxxxx.supabase.co
    VITE_SUPABASE_ANON_KEY=eyJ...
    ```
-5. Para o deploy, adicione as mesmas duas chaves em **Settings → Secrets and variables → Actions** do repositório GitHub (`VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`) — o workflow em `.github/workflows/deploy.yml` já as injeta no build.
+5. Para o deploy, adicione as mesmas duas chaves em **Settings → Secrets and variables → Actions**, na aba **Variables** (não "Secrets" — esses valores não são sensíveis) do repositório GitHub (`VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`) — o workflow em `.github/workflows/deploy.yml` já as injeta no build.
 
 A chave anon é pública por design (o controle de acesso é feito pelas políticas RLS no banco, não por manter a chave em segredo), então não há problema em ela ir para o bundle final.
 

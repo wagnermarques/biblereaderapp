@@ -26,8 +26,12 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # Repository *variables*, not secrets — the anon/publishable key and
+          # project URL are meant to be public (access control is enforced by
+          # RLS, not by hiding these), so they belong in the non-sensitive
+          # "Variables" tab (Settings > Secrets and variables > Actions).
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
