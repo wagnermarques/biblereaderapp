@@ -33,7 +33,12 @@ export const authService = {
 
   async signUp(email, password) {
     if (!supabase) throw new Error('Supabase não configurado')
-    const { error } = await supabase.auth.signUp({ email, password })
+    // Send the confirmation link back to wherever the app is actually
+    // running (dev or prod) instead of relying on the Supabase project's
+    // dashboard-configured default Site URL. This exact URL must also be
+    // added to the project's Auth > URL Configuration > Redirect URLs list.
+    const emailRedirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`
+    const { error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo } })
     if (error) throw error
   },
 
