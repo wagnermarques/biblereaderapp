@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import './bible-nav.js'
-import { navigateToChapter } from '../router.js'
+import { navigateToBookChapters } from '../router.js'
 
 export class BookListView extends LitElement {
   static styles = css`
@@ -17,7 +17,7 @@ export class BookListView extends LitElement {
   `
 
   _onBookSelected(e) {
-    navigateToChapter(e.detail.bookId, 1)
+    navigateToBookChapters(e.detail.bookId)
   }
 
   render() {

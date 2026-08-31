@@ -58,7 +58,15 @@ function main() {
     const testament = i < OT_COUNT ? 'ot' : 'nt'
     const chapters = book.chapters.map((ch) => ch.verses.map((v) => v.text.trim()))
 
-    index.push({ id, name: book.name, testament, chapters: chapters.length })
+    // versesPerChapter lets the UI compute "is this chapter fully read" (from
+    // per-verse read tracking) without fetching the whole book's text.
+    index.push({
+      id,
+      name: book.name,
+      testament,
+      chapters: chapters.length,
+      versesPerChapter: chapters.map((ch) => ch.length),
+    })
     writeFileSync(
       path.join(outBooksDir, `${id}.json`),
       JSON.stringify({ id, name: book.name, testament, chapters }),

@@ -4,7 +4,7 @@
  *   #/livros                -> book list page
  *   #/sobre/objetivo        -> about/purpose page
  *   #/conta                 -> account/login page
- *   #/:book                 -> chapter 1 of that book
+ *   #/:book                 -> chapter picker grid for that book
  *   #/:book/:chapter        -> reading view
  *   #/search?q=...          -> search results
  */
@@ -44,7 +44,7 @@ function parseHash() {
     return { name: 'home' }
   }
   if (segments.length === 1) {
-    return { name: 'chapter', book: segments[0], chapter: 1 }
+    return { name: 'book-chapters', book: segments[0] }
   }
   return { name: 'chapter', book: segments[0], chapter: Number(segments[1]) || 1 }
 }
@@ -70,6 +70,10 @@ export function createRouter(onChange) {
 
 export function navigateToChapter(bookId, chapter) {
   location.hash = `#/${bookId}/${chapter}`
+}
+
+export function navigateToBookChapters(bookId) {
+  location.hash = `#/${bookId}`
 }
 
 export function navigateToSearch(q) {
