@@ -1,6 +1,6 @@
 @startuml Biblia PWA - Supabase schema
 
-title Bíblia PWA — esquema Supabase (login + favoritos sincronizados)
+title Bíblia PWA — esquema Supabase (login + favoritos e progresso de leitura sincronizados)
 
 entity "auth.users" as users {
   * id : uuid
@@ -50,7 +50,29 @@ note bottom of bookmarks
   localStorage no dispositivo.
 end note
 
+entity "public.read_verses" as read_verses {
+  * id : uuid
+  --
+  * user_id : uuid
+  * book_id : text
+  * chapter : integer
+  * verse : integer
+  read_at : timestamptz
+}
+
+note bottom of read_verses
+  RLS: usuário só enxerga/insere/remove
+  as próprias linhas (auth.uid() = user_id).
+  Chave única: (user_id, book_id, chapter, verse).
+  Uma linha = um versículo lido — automaticamente
+  (rolou a tela até ele) ou manualmente (toque no
+  número do versículo). Não existe tabela separada
+  para "capítulo lido": isso é calculado no cliente
+  (todos os versículos do capítulo presentes aqui).
+end note
+
 users ||--|| profiles : "id (1:1, via trigger)"
 users ||--o{ bookmarks : "user_id (1:N)"
+users ||--o{ read_verses : "user_id (1:N)"
 
 @enduml

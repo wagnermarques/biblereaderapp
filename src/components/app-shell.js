@@ -1,5 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import './chapter-view.js'
+import './chapter-grid-view.js'
 import './search-view.js'
 import './book-list-view.js'
 import './purpose-view.js'
@@ -89,15 +90,16 @@ export class AppShell extends LitElement {
     this._applyTheme()
     searchService.warmUp()
 
-    // Pull the signed-in user's bookmarks into local storage whenever a session
-    // appears — both right after sign-in and when a persisted session is
-    // restored on page load.
+    // Pull the signed-in user's bookmarks/reading-progress into local storage
+    // whenever a session appears — both right after sign-in and when a
+    // persisted session is restored on page load.
     let syncedUserId = null
     this._authUnsubscribe = authService.subscribe((session) => {
       const userId = session?.user?.id ?? null
       if (userId && userId !== syncedUserId) {
         syncedUserId = userId
         syncService.pullBookmarks(userId)
+        syncService.pullReadVerses(userId)
       } else if (!userId) {
         syncedUserId = null
       }
@@ -193,6 +195,8 @@ export class AppShell extends LitElement {
             font-scale=${this._fontScale}
           ></chapter-view>
         `
+      case 'book-chapters':
+        return html`<chapter-grid-view book-id=${this._route.book}></chapter-grid-view>`
       case 'search':
         return html`<search-view .query=${this._route.query.q ?? ''}></search-view>`
       case 'books':

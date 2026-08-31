@@ -5,6 +5,12 @@ import { authService } from '../services/auth-service.js'
 import { syncService } from '../services/sync-service.js'
 import { navigateToChapter } from '../router.js'
 
+// How long a verse must stay mostly on screen before it auto-marks as read —
+// avoids marking every verse read from a quick scroll-past.
+const AUTO_READ_DWELL_MS = 1200
+// Fraction of a verse's height that must be visible to count as "being read".
+const AUTO_READ_VISIBLE_RATIO = 0.6
+
 export class ChapterView extends LitElement {
   static properties = {
     bookId: { attribute: 'book-id' },
@@ -33,6 +39,13 @@ export class ChapterView extends LitElement {
       font-size: 1.5rem;
       margin: 0;
     }
+    h1 .book-link {
+      color: inherit;
+      text-decoration: none;
+    }
+    h1 .book-link:hover {
+      text-decoration: underline;
+    }
     .verse {
       margin: 0 0 0.6em;
       line-height: 1.6;
@@ -47,12 +60,22 @@ export class ChapterView extends LitElement {
     .verse[data-bookmarked] {
       background: var(--md-sys-color-primary-container);
     }
+    .verse[data-read] {
+      opacity: 0.7;
+    }
     .verse-num {
       font-weight: 600;
       color: var(--md-sys-color-primary);
       margin-right: 6px;
       font-size: 0.75em;
       vertical-align: super;
+      cursor: pointer;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    .verse-num:hover {
+      background: var(--md-sys-color-secondary);
+      color: var(--md-sys-color-on-secondary);
     }
     nav.chapter-nav {
       display: flex;
@@ -75,18 +98,74 @@ export class ChapterView extends LitElement {
     }
   }
 
+  disconnectedCallback() {
+    super.disconnectedCallback()
+    this._teardownReadObserver()
+  }
+
   async _load() {
     this._error = null
+    this._teardownReadObserver()
     try {
       const index = await bibleDataService.getIndex()
       this._bookMeta = index.find((b) => b.id === this.bookId) ?? null
       this._verses = await bibleDataService.getChapter(this.bookId, this.chapter)
       storageService.setLastRead(this.bookId, this.chapter)
       this.scrollTop = 0
+      await this.updateComplete
+      this._setupReadObserver()
     } catch (err) {
       this._error = err.message
       this._verses = null
     }
+  }
+
+  /** Watches every verse and auto-marks it read once it's been mostly visible for a moment. */
+  _setupReadObserver() {
+    const verseEls = this.renderRoot.querySelectorAll('.verse[data-verse]')
+    if (!verseEls.length) return
+    this._pendingReadTimers = new Map()
+    this._readObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const verseNum = Number(entry.target.dataset.verse)
+          if (entry.isIntersecting) {
+            if (!this._pendingReadTimers.has(verseNum)) {
+              const timer = setTimeout(() => {
+                this._pendingReadTimers.delete(verseNum)
+                this._markVerseReadAuto(verseNum)
+              }, AUTO_READ_DWELL_MS)
+              this._pendingReadTimers.set(verseNum, timer)
+            }
+          } else {
+            const timer = this._pendingReadTimers.get(verseNum)
+            if (timer) {
+              clearTimeout(timer)
+              this._pendingReadTimers.delete(verseNum)
+            }
+          }
+        }
+      },
+      { threshold: AUTO_READ_VISIBLE_RATIO }
+    )
+    verseEls.forEach((el) => this._readObserver.observe(el))
+  }
+
+  _teardownReadObserver() {
+    this._readObserver?.disconnect()
+    this._readObserver = null
+    if (this._pendingReadTimers) {
+      for (const timer of this._pendingReadTimers.values()) clearTimeout(timer)
+      this._pendingReadTimers.clear()
+    }
+  }
+
+  _markVerseReadAuto(verseNum) {
+    const newlyMarked = storageService.markVerseRead(this.bookId, this.chapter, verseNum)
+    if (!newlyMarked) return
+    this.requestUpdate()
+    const userId = authService.getCurrentUser()?.id
+    if (userId) syncService.pushVerseReadAdded(userId, this.bookId, this.chapter, verseNum)
   }
 
   _toggleBookmark(verseNum) {
@@ -97,6 +176,18 @@ export class ChapterView extends LitElement {
     if (userId) {
       if (added) syncService.pushBookmarkAdded(userId, this.bookId, this.chapter, verseNum)
       else syncService.pushBookmarkRemoved(userId, this.bookId, this.chapter, verseNum)
+    }
+  }
+
+  _toggleVerseRead(event, verseNum) {
+    event.stopPropagation()
+    const { added } = storageService.toggleReadVerse(this.bookId, this.chapter, verseNum)
+    this.requestUpdate()
+
+    const userId = authService.getCurrentUser()?.id
+    if (userId) {
+      if (added) syncService.pushVerseReadAdded(userId, this.bookId, this.chapter, verseNum)
+      else syncService.pushVerseReadRemoved(userId, this.bookId, this.chapter, verseNum)
     }
   }
 
@@ -117,23 +208,47 @@ export class ChapterView extends LitElement {
     }
     return html`
       <header>
-        <h1>${this._bookMeta.name} ${this.chapter}</h1>
+        <h1>
+          <a class="book-link" href="#/${this.bookId}">${this._bookMeta.name}</a> ${this.chapter}
+        </h1>
       </header>
       <div class="verses">
-        ${this._verses.map((text, i) => {
-          const verseNum = i + 1
-          const bookmarked = storageService.isBookmarked(this.bookId, this.chapter, verseNum)
-          return html`
-            <p
-              class="verse"
-              ?data-bookmarked=${bookmarked}
-              title="Toque para marcar/desmarcar"
-              @click=${() => this._toggleBookmark(verseNum)}
-            >
-              <span class="verse-num">${verseNum}</span>${text}
-            </p>
-          `
-        })}
+        ${(() => {
+          const bookmarkedVerses = new Set(
+            storageService
+              .getBookmarks()
+              .filter((b) => b.book === this.bookId && b.chapter === this.chapter)
+              .map((b) => b.verse)
+          )
+          const readVerses = new Set(
+            storageService
+              .getReadVerses()
+              .filter((v) => v.book === this.bookId && v.chapter === this.chapter)
+              .map((v) => v.verse)
+          )
+          return this._verses.map((text, i) => {
+            const verseNum = i + 1
+            const bookmarked = bookmarkedVerses.has(verseNum)
+            const read = readVerses.has(verseNum)
+            return html`
+              <p
+                class="verse"
+                data-verse=${verseNum}
+                ?data-bookmarked=${bookmarked}
+                ?data-read=${read}
+                title="Toque para marcar/desmarcar favorito"
+                @click=${() => this._toggleBookmark(verseNum)}
+              >
+                <span
+                  class="verse-num"
+                  title="Toque para marcar/desmarcar como lido"
+                  @click=${(e) => this._toggleVerseRead(e, verseNum)}
+                  >${verseNum}</span
+                >${text}
+              </p>
+            `
+          })
+        })()}
       </div>
       <nav class="chapter-nav">
         <md-text-button ?disabled=${this.chapter <= 1} @click=${() => this._goToChapter(-1)}>

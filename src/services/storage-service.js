@@ -4,6 +4,7 @@ const KEYS = {
   lastRead: 'bible:last-read', // { book, chapter }
   bookmarks: 'bible:bookmarks', // [{ book, chapter, verse }]
   highlights: 'bible:highlights', // { "book:chapter:verse": colorId }
+  readVerses: 'bible:read-verses', // [{ book, chapter, verse }]
 }
 
 function readJSON(key, fallback) {
@@ -22,6 +23,60 @@ function writeJSON(key, value) {
     // storage unavailable (private mode, quota) — fail silently, app still works in-memory
   }
 }
+
+// Shared set-membership helpers backing bookmarks/read-verses — both are
+// "does this (book,chapter,verse) tuple exist in this local list" with the
+// same toggle/merge/membership shape, just different keys.
+function getList(storageKey) {
+  return readJSON(storageKey, [])
+}
+
+/** Returns { added, list }. */
+function toggleInList(storageKey, keyFn, item) {
+  const list = getList(storageKey)
+  const k = keyFn(item)
+  const idx = list.findIndex((x) => keyFn(x) === k)
+  let added
+  if (idx >= 0) {
+    list.splice(idx, 1)
+    added = false
+  } else {
+    list.push(item)
+    added = true
+  }
+  writeJSON(storageKey, list)
+  return { added, list }
+}
+
+function addToList(storageKey, keyFn, item) {
+  if (isInList(storageKey, keyFn, item)) return false
+  const list = getList(storageKey)
+  list.push(item)
+  writeJSON(storageKey, list)
+  return true
+}
+
+function mergeIntoList(storageKey, keyFn, remoteItems) {
+  const local = getList(storageKey)
+  const seen = new Set(local.map(keyFn))
+  for (const item of remoteItems) {
+    const k = keyFn(item)
+    if (!seen.has(k)) {
+      local.push(item)
+      seen.add(k)
+    }
+  }
+  writeJSON(storageKey, local)
+  return local
+}
+
+function isInList(storageKey, keyFn, item) {
+  const k = keyFn(item)
+  return getList(storageKey).some((x) => keyFn(x) === k)
+}
+
+const bookmarkKey = (b) => `${b.book}:${b.chapter}:${b.verse}`
+const verseKey = (v) => `${v.book}:${v.chapter}:${v.verse}`
 
 export const storageService = {
   getTheme() {
@@ -46,43 +101,19 @@ export const storageService = {
   },
 
   getBookmarks() {
-    return readJSON(KEYS.bookmarks, [])
+    return getList(KEYS.bookmarks)
   },
   /** Returns { added, bookmarks } so callers can mirror the change elsewhere (e.g. sync). */
   toggleBookmark(book, chapter, verse) {
-    const bookmarks = this.getBookmarks()
-    const idx = bookmarks.findIndex(
-      (b) => b.book === book && b.chapter === chapter && b.verse === verse
-    )
-    let added
-    if (idx >= 0) {
-      bookmarks.splice(idx, 1)
-      added = false
-    } else {
-      bookmarks.push({ book, chapter, verse })
-      added = true
-    }
-    writeJSON(KEYS.bookmarks, bookmarks)
-    return { added, bookmarks }
+    const { added, list } = toggleInList(KEYS.bookmarks, bookmarkKey, { book, chapter, verse })
+    return { added, bookmarks: list }
   },
   /** Unions remote bookmarks into local storage without duplicating existing ones. */
   mergeBookmarks(remoteBookmarks) {
-    const local = this.getBookmarks()
-    const key = (b) => `${b.book}:${b.chapter}:${b.verse}`
-    const seen = new Set(local.map(key))
-    for (const b of remoteBookmarks) {
-      if (!seen.has(key(b))) {
-        local.push(b)
-        seen.add(key(b))
-      }
-    }
-    writeJSON(KEYS.bookmarks, local)
-    return local
+    return mergeIntoList(KEYS.bookmarks, bookmarkKey, remoteBookmarks)
   },
   isBookmarked(book, chapter, verse) {
-    return this.getBookmarks().some(
-      (b) => b.book === book && b.chapter === chapter && b.verse === verse
-    )
+    return isInList(KEYS.bookmarks, bookmarkKey, { book, chapter, verse })
   },
 
   getHighlights() {
@@ -101,5 +132,24 @@ export const storageService = {
   },
   getHighlight(book, chapter, verse) {
     return this.getHighlights()[`${book}:${chapter}:${verse}`] ?? null
+  },
+
+  getReadVerses() {
+    return getList(KEYS.readVerses)
+  },
+  /** Idempotent add (not a toggle) — used by auto-marking as a verse scrolls into view. Returns true if newly marked. */
+  markVerseRead(book, chapter, verse) {
+    return addToList(KEYS.readVerses, verseKey, { book, chapter, verse })
+  },
+  /** Manual toggle, e.g. tapping a verse number — flips read/unread either way. */
+  toggleReadVerse(book, chapter, verse) {
+    const { added, list } = toggleInList(KEYS.readVerses, verseKey, { book, chapter, verse })
+    return { added, readVerses: list }
+  },
+  mergeReadVerses(remoteVerses) {
+    return mergeIntoList(KEYS.readVerses, verseKey, remoteVerses)
+  },
+  isVerseRead(book, chapter, verse) {
+    return isInList(KEYS.readVerses, verseKey, { book, chapter, verse })
   },
 }
