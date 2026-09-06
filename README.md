@@ -91,7 +91,7 @@ supabase/
 - Tema claro/escuro/sistema
 - Ajuste de tamanho de fonte
 - Funciona offline após o primeiro carregamento (todo o texto bíblico é cacheado)
-- Instalável como app (PWA)
+- Instalável como app (PWA), com aviso na tela ("Uma nova versão está disponível") quando uma atualização já foi baixada — o usuário decide quando recarregar, em vez de trocar a versão em uso sem avisar
 - Login opcional (e-mail/senha via Supabase) para sincronizar favoritos entre dispositivos
 
 ## Ícone do PWA

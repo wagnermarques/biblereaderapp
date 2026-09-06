@@ -8,7 +8,8 @@ export default defineConfig({
   base: `/${REPO_NAME}/`,
   plugins: [
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
+      injectRegister: null,
       includeAssets: ['favicon.svg'],
       manifest: {
         name: 'Bíblia PWA',

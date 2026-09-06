@@ -16,6 +16,9 @@
   --md-sys-color-on-background: #1c1b1f;
   --md-sys-color-error: #b3261e;
   --md-sys-color-on-error: #ffffff;
+  --md-sys-color-inverse-surface: #313033;
+  --md-sys-color-inverse-on-surface: #f4eff4;
+  --md-sys-color-inverse-primary: #d0bcff;
 
   --md-ref-typeface-brand: 'Roboto', system-ui, sans-serif;
   --md-ref-typeface-plain: 'Roboto', system-ui, sans-serif;
@@ -39,6 +42,9 @@
   --md-sys-color-on-background: #e6e1e5;
   --md-sys-color-error: #f2b8b5;
   --md-sys-color-on-error: #601410;
+  --md-sys-color-inverse-surface: #e6e1e5;
+  --md-sys-color-inverse-on-surface: #313033;
+  --md-sys-color-inverse-primary: #6750a4;
 
   color-scheme: dark;
 }
@@ -60,6 +66,9 @@
     --md-sys-color-on-background: #e6e1e5;
     --md-sys-color-error: #f2b8b5;
     --md-sys-color-on-error: #601410;
+    --md-sys-color-inverse-surface: #e6e1e5;
+    --md-sys-color-inverse-on-surface: #313033;
+    --md-sys-color-inverse-primary: #6750a4;
     color-scheme: dark;
   }
 }
