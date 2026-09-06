@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit'
+import { registerSW } from 'virtual:pwa-register'
 import './chapter-view.js'
 import './chapter-grid-view.js'
 import './search-view.js'
@@ -25,6 +26,7 @@ export class AppShell extends LitElement {
     _drawerOpen: { state: true },
     _theme: { state: true },
     _fontScale: { state: true },
+    _updateAvailable: { state: true },
   }
 
   static styles = css`
@@ -65,11 +67,38 @@ export class AppShell extends LitElement {
       text-align: center;
       color: var(--md-sys-color-on-surface-variant);
     }
+    md-navigation-drawer-modal {
+      --md-navigation-drawer-modal-scrim-color: #000;
+      --md-navigation-drawer-modal-scrim-opacity: 0.32;
+    }
     .drawer-content {
       padding-top: 8px;
     }
     .drawer-content nav-accordion md-list {
       padding-left: 16px;
+    }
+    .update-toast {
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      max-width: calc(100% - 32px);
+      padding: 8px 8px 8px 16px;
+      border-radius: 4px;
+      background: var(--md-sys-color-inverse-surface);
+      color: var(--md-sys-color-inverse-on-surface);
+      box-shadow: 0 3px 5px rgba(0, 0, 0, 0.2), 0 1px 10px rgba(0, 0, 0, 0.12);
+    }
+    .update-toast span {
+      font-size: 0.875rem;
+    }
+    .update-toast md-text-button {
+      --md-text-button-label-text-color: var(--md-sys-color-inverse-primary);
+      flex-shrink: 0;
     }
   `
 
@@ -79,6 +108,12 @@ export class AppShell extends LitElement {
     this._drawerOpen = false
     this._theme = storageService.getTheme()
     this._fontScale = storageService.getFontScale()
+    this._updateAvailable = false
+    this._updateSW = registerSW({
+      onNeedRefresh: () => {
+        this._updateAvailable = true
+      },
+    })
   }
 
   connectedCallback() {
@@ -182,6 +217,15 @@ export class AppShell extends LitElement {
       </md-navigation-drawer-modal>
 
       <main>${this._renderRoute()}</main>
+
+      ${this._updateAvailable
+        ? html`
+            <div class="update-toast" role="status">
+              <span>Uma nova versão está disponível.</span>
+              <md-text-button @click=${() => this._updateSW(true)}>Atualizar</md-text-button>
+            </div>
+          `
+        : ''}
     `
   }
 
