@@ -65,6 +65,10 @@ export class AppShell extends LitElement {
       text-align: center;
       color: var(--md-sys-color-on-surface-variant);
     }
+    md-navigation-drawer-modal {
+      --md-navigation-drawer-modal-scrim-color: #000;
+      --md-navigation-drawer-modal-scrim-opacity: 0.32;
+    }
     .drawer-content {
       padding-top: 8px;
     }
