@@ -73,9 +73,10 @@ src/
   main.js
 public/
   data/           # books-index.json + books/*.json (texto bíblico)
-  icons/          # ícones do PWA (placeholders — troque pelos definitivos)
+  icons/          # ícones do PWA (gerados a partir de favicon.svg — veja "Ícone do PWA")
 scripts/
   import-bible-data.mjs   # converte uma fonte JSON externa para o formato usado aqui
+  generate-icons.mjs      # gera public/icons/*.png a partir de public/favicon.svg
 supabase/
   migrations/0001_init.sql   # schema + RLS para login/favoritos sincronizados
 .github/workflows/deploy.yml
@@ -93,10 +94,35 @@ supabase/
 - Instalável como app (PWA)
 - Login opcional (e-mail/senha via Supabase) para sincronizar favoritos entre dispositivos
 
+## Ícone do PWA
+
+O logo (`public/favicon.svg`) é a marca do app; `public/icons/*.png` são renderizações dele em todos os tamanhos usados por `manifest.webmanifest` (Android/Chrome, Apple touch icon, Windows) e por um ícone maskable (com margem de segurança para as máscaras circulares/squircle do Android).
+
+Para regenerar depois de alterar o logo:
+
+```bash
+node scripts/generate-icons.mjs
+```
+
+## Ícones da interface
+
+Os ícones de UI vêm do [Material Symbols](https://fonts.google.com/icons) (Google, licença Apache 2.0), já carregado via Google Fonts em `index.html` e usado pelos componentes `@material/web` (`<md-icon>`). Para ícones adicionais fora do catálogo do Material Symbols, boas fontes gratuitas e de código aberto:
+
+- [Material Symbols](https://fonts.google.com/icons) — Apache 2.0, já é o padrão deste projeto.
+- [Iconify](https://icon-sets.iconify.design) — agrega dezenas de bibliotecas open source (Tabler, Lucide, Phosphor, Heroicons etc.), todas com a licença indicada em cada ícone.
+- [Lucide](https://lucide.dev) — ISC.
+- [Tabler Icons](https://tabler.io/icons) — MIT.
+- [Phosphor Icons](https://phosphoricons.com) — MIT.
+
 ## Próximos passos sugeridos
 
-- Ícones definitivos (os de `public/icons/` são placeholders gerados por script)
 - Suporte a múltiplas traduções (o formato de dados já permite adicionar outras)
 - Versículo do dia / aleatório
 - Compartilhar/copiar versículo
 - Planos de leitura
+
+## Licença
+
+Este projeto é distribuído sob a **GNU Affero General Public License v3.0 (AGPL-3.0)** — veja [`LICENSE`](./LICENSE). Em resumo: você pode usar, estudar, modificar e redistribuir o código livremente, mas qualquer versão modificada — inclusive uma hospedada como serviço web, sem redistribuir o binário — deve disponibilizar seu código-fonte aos usuários que interagem com ela pela rede (é essa cláusula de uso em rede que diferencia a AGPL da GPL comum, e por isso ela foi escolhida aqui, já que o app tem um recurso opcional de sincronização via Supabase).
+
+O texto bíblico (JFAAL, domínio público) e os componentes do Material Web (Apache 2.0) mantêm suas próprias licenças de origem — veja a seção [Texto bíblico](#texto-bíblico).
