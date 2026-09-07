@@ -109,9 +109,14 @@ export class AppShell extends LitElement {
     this._theme = storageService.getTheme()
     this._fontScale = storageService.getFontScale()
     this._updateAvailable = false
+    this._swRegistration = null
     this._updateSW = registerSW({
       onNeedRefresh: () => {
         this._updateAvailable = true
+      },
+      onRegisteredSW: (_url, registration) => {
+        this._swRegistration = registration
+        registration?.update()
       },
     })
   }
@@ -122,6 +127,16 @@ export class AppShell extends LitElement {
       this._route = route
       this._drawerOpen = false
     })
+
+    // Android PWAs are usually resumed from memory rather than restarted, so
+    // the browser's own update check may never run again after the first
+    // launch — check explicitly every time the app comes back to the front.
+    this._onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        this._swRegistration?.update()
+      }
+    }
+    document.addEventListener('visibilitychange', this._onVisibilityChange)
     this._applyTheme()
     searchService.warmUp()
 
@@ -145,6 +160,7 @@ export class AppShell extends LitElement {
     super.disconnectedCallback()
     this._unsubscribe?.()
     this._authUnsubscribe?.()
+    document.removeEventListener('visibilitychange', this._onVisibilityChange)
   }
 
   _applyTheme() {
