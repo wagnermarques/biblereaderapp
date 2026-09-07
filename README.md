@@ -96,7 +96,7 @@ supabase/
 
 ## Ícone do PWA
 
-O logo (`public/favicon.svg`) é a marca do app; `public/icons/*.png` são renderizações dele em todos os tamanhos usados por `manifest.webmanifest` (Android/Chrome, Apple touch icon, Windows) e por um ícone maskable (com margem de segurança para as máscaras circulares/squircle do Android).
+O logo (`public/favicon.svg`) é o glyph `menu_book` do [Material Symbols](https://fonts.google.com/icons) (Apache 2.0, mesma licença já usada nos ícones de UI — veja [Ícones da interface](#ícones-da-interface)), na cor primária do tema. `public/icons/*.png` são renderizações dele em todos os tamanhos usados por `manifest.webmanifest` (Android/Chrome, Apple touch icon, Windows) e por um ícone maskable (com margem de segurança para as máscaras circulares/squircle do Android).
 
 Para regenerar depois de alterar o logo:
 
