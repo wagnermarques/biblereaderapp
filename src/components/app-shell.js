@@ -195,6 +195,14 @@ export class AppShell extends LitElement {
     this._applyTheme()
   }
 
+  _selectDrawerItem(navigate) {
+    // Route changes already close the drawer via createRouter's callback,
+    // but that relies on the hash actually changing — clicking a menu item
+    // for the page the user is already on leaves it open otherwise.
+    navigate()
+    this._drawerOpen = false
+  }
+
   _adjustFont(delta) {
     this._fontScale = Math.min(1.6, Math.max(0.8, this._fontScale + delta))
     storageService.setFontScale(this._fontScale)
@@ -232,17 +240,23 @@ export class AppShell extends LitElement {
         <div class="drawer-content">
           <nav-accordion label="Livros" expanded>
             <md-list>
-              <md-list-item type="button" @click=${navigateToBooks}>Listar livros</md-list-item>
+              <md-list-item type="button" @click=${() => this._selectDrawerItem(navigateToBooks)}>
+                Listar livros
+              </md-list-item>
             </md-list>
           </nav-accordion>
           <nav-accordion label="Sobre">
             <md-list>
-              <md-list-item type="button" @click=${navigateToPurpose}>Objetivo</md-list-item>
+              <md-list-item type="button" @click=${() => this._selectDrawerItem(navigateToPurpose)}>
+                Objetivo
+              </md-list-item>
             </md-list>
           </nav-accordion>
           <nav-accordion label="Conta">
             <md-list>
-              <md-list-item type="button" @click=${navigateToAccount}>Minha conta</md-list-item>
+              <md-list-item type="button" @click=${() => this._selectDrawerItem(navigateToAccount)}>
+                Minha conta
+              </md-list-item>
             </md-list>
           </nav-accordion>
         </div>
