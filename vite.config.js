@@ -37,7 +37,7 @@ export default defineConfig({
         // Precache the app shell + every book JSON (public/data/**) so the whole
         // Bible works offline after the first visit. This makes the service worker
         // download ~4 MB on install — expected for an offline-first Bible reader.
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,json,webmanifest}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,json,webmanifest,woff2}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         runtimeCaching: [
           {

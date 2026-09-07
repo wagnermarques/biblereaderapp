@@ -106,7 +106,7 @@ node scripts/generate-icons.mjs
 
 ## Ícones da interface
 
-Os ícones de UI vêm do [Material Symbols](https://fonts.google.com/icons) (Google, licença Apache 2.0), já carregado via Google Fonts em `index.html` e usado pelos componentes `@material/web` (`<md-icon>`). Para ícones adicionais fora do catálogo do Material Symbols, boas fontes gratuitas e de código aberto:
+Os ícones de UI vêm do [Material Symbols](https://fonts.google.com/icons) (Google, licença Apache 2.0), usado pelos componentes `@material/web` (`<md-icon>`). A fonte fica **auto-hospedada** em `public/fonts/material-symbols-outlined.woff2` (pacote npm [`@material-symbols/font-400`](https://www.npmjs.com/package/@material-symbols/font-400), também Apache 2.0) em vez de carregada via Google Fonts — mantém o catálogo completo de ícones disponível offline, sem depender de um domínio externo, e sem precisar regenerar nada ao usar um ícone novo. Para ícones adicionais fora do catálogo do Material Symbols, boas fontes gratuitas e de código aberto:
 
 - [Material Symbols](https://fonts.google.com/icons) — Apache 2.0, já é o padrão deste projeto.
 - [Iconify](https://icon-sets.iconify.design) — agrega dezenas de bibliotecas open source (Tabler, Lucide, Phosphor, Heroicons etc.), todas com a licença indicada em cada ícone.
