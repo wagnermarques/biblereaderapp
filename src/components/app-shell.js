@@ -45,10 +45,6 @@ export class AppShell extends LitElement {
       border-bottom: 1px solid var(--md-sys-color-outline);
       position: sticky;
       top: 0;
-      /* No explicit z-index: the modal drawer is meant to overlay the whole
-         screen (including this bar) when open, matching Material's modal
-         navigation drawer pattern — DOM order (drawer markup comes after
-         this bar) already puts it on top without one. */
     }
     .top-bar h1 {
       font-size: 1.1rem;
@@ -161,6 +157,26 @@ export class AppShell extends LitElement {
     this._unsubscribe?.()
     this._authUnsubscribe?.()
     document.removeEventListener('visibilitychange', this._onVisibilityChange)
+  }
+
+  firstUpdated() {
+    // md-navigation-drawer-modal's own panel/scrim have no positioned
+    // ancestor of their own, so their containing block escapes all the way
+    // to the viewport — and in that situation, any relatively positioned
+    // descendant deep inside <main> (e.g. md-list-item's internal ripple
+    // layer) paints above them despite DOM order suggesting otherwise.
+    // There's no exposed CSS custom property for this, so patch it directly
+    // — both elements are already position: absolute, so adding a z-index
+    // doesn't change their layout or containing-block behavior.
+    const drawer = this.shadowRoot.querySelector('md-navigation-drawer-modal')
+    const style = document.createElement('style')
+    style.textContent = `
+      .md3-navigation-drawer-modal,
+      .md3-navigation-drawer-modal__scrim {
+        z-index: 1;
+      }
+    `
+    drawer.shadowRoot.appendChild(style)
   }
 
   _applyTheme() {
