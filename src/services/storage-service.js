@@ -3,7 +3,7 @@ const KEYS = {
   fontScale: 'bible:font-scale', // number, 1 = default
   lastRead: 'bible:last-read', // { book, chapter }
   bookmarks: 'bible:bookmarks', // [{ book, chapter, verse }]
-  highlights: 'bible:highlights', // { "book:chapter:verse": colorId }
+  markedTexts: 'bible:marked-texts', // [{ id, translationId, book, chapter, verse, startOffset, endOffset, color, text, createdAt }]
   readVerses: 'bible:read-verses', // [{ book, chapter, verse }]
 }
 
