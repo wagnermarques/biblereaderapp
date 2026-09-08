@@ -11,9 +11,9 @@ import { MARK_COLORS, MARK_TEXT_COLOR, markColor } from '../mark-colors.js'
 const AUTO_READ_DWELL_MS = 1200
 // Fraction of a verse's height that must be visible to count as "being read".
 const AUTO_READ_VISIBLE_RATIO = 0.6
-// Touch selection isn't final when touchend fires (the handles are still
-// settling), so give the browser a moment before reading the selection.
-const TOUCH_SELECTION_SETTLE_MS = 250
+// How long the selection must hold still before the dialog opens, so dragging
+// a handle across a phrase doesn't pop the dialog on every intermediate word.
+const SELECTION_SETTLE_MS = 400
 
 /** Character offset of (node, offset) counted from the start of `root`'s text. */
 function offsetWithin(root, node, offset) {
@@ -160,6 +160,19 @@ export class ChapterView extends LitElement {
     super()
     this.fontScale = 1
     this._draft = null
+    // Android hands a long-press to its own selection UI and dispatches
+    // touchcancel rather than touchend, so a touch-event trigger never fires
+    // for the very gesture that selects text. selectionchange is the signal
+    // the browser actually emits, whatever the input method.
+    this._onSelectionChange = () => {
+      clearTimeout(this._selectionTimer)
+      this._selectionTimer = setTimeout(() => this._openDialogForSelection(), SELECTION_SETTLE_MS)
+    }
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    document.addEventListener('selectionchange', this._onSelectionChange)
   }
 
   updated(changed) {
@@ -174,7 +187,8 @@ export class ChapterView extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback()
     this._teardownReadObserver()
-    clearTimeout(this._touchSelectionTimer)
+    document.removeEventListener('selectionchange', this._onSelectionChange)
+    clearTimeout(this._selectionTimer)
   }
 
   async _load() {
@@ -300,19 +314,17 @@ export class ChapterView extends LitElement {
     }
   }
 
-  _onPointerSelection() {
+  _openDialogForSelection() {
     if (this._draft) return
     const selection = this._selection()
     if (!selection) return
     this._draft = { ...selection, id: null, color: MARK_COLORS[0].id }
   }
 
-  _onTouchEnd() {
-    clearTimeout(this._touchSelectionTimer)
-    this._touchSelectionTimer = setTimeout(
-      () => this._onPointerSelection(),
-      TOUCH_SELECTION_SETTLE_MS
-    )
+  /** A finished mouse drag needs no settling delay — open right away. */
+  _onMouseUp() {
+    clearTimeout(this._selectionTimer)
+    this._openDialogForSelection()
   }
 
   _editMark(event, mark) {
@@ -426,7 +438,7 @@ export class ChapterView extends LitElement {
           <a class="book-link" href="#/${this.bookId}">${this._bookMeta.name}</a> ${this.chapter}
         </h1>
       </header>
-      <div class="verses" @mouseup=${this._onPointerSelection} @touchend=${this._onTouchEnd}>
+      <div class="verses" @mouseup=${this._onMouseUp}>
         ${(() => {
           const bookmarkedVerses = new Set(
             storageService
