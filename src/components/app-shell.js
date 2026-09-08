@@ -7,6 +7,7 @@ import './book-list-view.js'
 import './purpose-view.js'
 import './account-view.js'
 import './nav-accordion.js'
+import './sync-status.js'
 import {
   createRouter,
   navigateToSearch,
@@ -227,6 +228,7 @@ export class AppShell extends LitElement {
         <md-icon-button @click=${() => this._adjustFont(0.1)} aria-label="Aumentar fonte">
           <md-icon>text_increase</md-icon>
         </md-icon-button>
+        <sync-status></sync-status>
         <md-icon-button @click=${() => this._toggleTheme()} aria-label="Alternar tema">
           <md-icon>${this._themeIcon()}</md-icon>
         </md-icon-button>

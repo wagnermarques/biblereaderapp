@@ -51,19 +51,30 @@ function isRetryable(error) {
 
 let flushing = false
 let flushTimer = null
+// navigator.onLine only reports whether an interface exists — a captive portal
+// or a dead uplink still says true — so being able to reach the server is
+// tracked from what actually happened on the last attempt.
+let reachable = true
 let status = { state: 'synced', pending: 0, failed: 0, lastSyncedAt: null }
 const statusListeners = new Set()
 
-function publishStatus(state) {
+/**
+ * Everything except 'syncing' is derived from the queue and reachability, so
+ * no caller can publish a state that a later recomputation silently erases.
+ * 'syncing' is the one genuinely transient state, hence the override.
+ */
+function publishStatus(override) {
   const outbox = storageService.getOutbox()
   const failed = outbox.filter((e) => e.failed).length
   const pending = outbox.length - failed
-  status = {
-    state: state ?? (failed ? 'error' : pending ? 'pending' : 'synced'),
-    pending,
-    failed,
-    lastSyncedAt: storageService.getLastSyncedAt(),
+  let state = override
+  if (!state) {
+    if (failed) state = 'error'
+    else if (!pending) state = 'synced'
+    else if (navigator.onLine === false || !reachable) state = 'offline'
+    else state = 'pending'
   }
+  status = { state, pending, failed, lastSyncedAt: storageService.getLastSyncedAt() }
   statusListeners.forEach((fn) => fn(status))
 }
 
@@ -105,7 +116,7 @@ export const syncService = {
     if (!supabase || flushing) return
     const userId = authService.getCurrentUser()?.id
     if (!userId) return publishStatus()
-    if (navigator.onLine === false) return publishStatus('offline')
+    if (navigator.onLine === false) return publishStatus()
 
     flushing = true
     publishStatus('syncing')
@@ -123,10 +134,12 @@ export const syncService = {
         }
         const { error } = await handler(userId, entry.payload)
         if (!error) {
+          reachable = true
           storageService.removeOutboxEntry(entry.id)
           continue
         }
         if (isRetryable(error)) {
+          reachable = false
           drained = false
           break
         }
@@ -136,7 +149,7 @@ export const syncService = {
       if (drained) storageService.setLastSyncedAt(new Date().toISOString())
     } finally {
       flushing = false
-      publishStatus(drained ? undefined : 'offline')
+      publishStatus()
     }
   },
 
@@ -185,7 +198,11 @@ export const syncService = {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => syncService.flush())
-  window.addEventListener('offline', () => publishStatus('offline'))
+  window.addEventListener('online', () => {
+    // Optimistic: the next flush is what actually proves reachability.
+    reachable = true
+    syncService.flush()
+  })
+  window.addEventListener('offline', () => publishStatus())
   publishStatus()
 }
