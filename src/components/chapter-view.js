@@ -4,12 +4,55 @@ import { storageService } from '../services/storage-service.js'
 import { authService } from '../services/auth-service.js'
 import { syncService } from '../services/sync-service.js'
 import { navigateToChapter } from '../router.js'
+import { MARK_COLORS, MARK_TEXT_COLOR, markColor } from '../mark-colors.js'
 
 // How long a verse must stay mostly on screen before it auto-marks as read —
 // avoids marking every verse read from a quick scroll-past.
 const AUTO_READ_DWELL_MS = 1200
 // Fraction of a verse's height that must be visible to count as "being read".
 const AUTO_READ_VISIBLE_RATIO = 0.6
+// Touch selection isn't final when touchend fires (the handles are still
+// settling), so give the browser a moment before reading the selection.
+const TOUCH_SELECTION_SETTLE_MS = 250
+
+/** Character offset of (node, offset) counted from the start of `root`'s text. */
+function offsetWithin(root, node, offset) {
+  const range = document.createRange()
+  range.selectNodeContents(root)
+  try {
+    range.setEnd(node, offset)
+  } catch {
+    return null
+  }
+  return range.toString().length
+}
+
+/** Nearest enclosing verse-text span, or null if the node sits outside one. */
+function closestVerseText(node) {
+  let el = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node
+  while (el && !el.classList?.contains('verse-text')) el = el.parentElement
+  return el
+}
+
+/**
+ * Splits a verse into alternating plain/marked runs. Marks are applied in
+ * start order and clipped to what's still unconsumed, so overlapping or stale
+ * offsets degrade into a shorter highlight instead of corrupting the text.
+ */
+function segmentVerse(text, marks) {
+  const segments = []
+  let cursor = 0
+  for (const mark of [...marks].sort((a, b) => a.startOffset - b.startOffset)) {
+    const start = Math.max(mark.startOffset, cursor)
+    const end = Math.min(mark.endOffset, text.length)
+    if (end <= start) continue
+    if (start > cursor) segments.push({ text: text.slice(cursor, start), mark: null })
+    segments.push({ text: text.slice(start, end), mark })
+    cursor = end
+  }
+  if (cursor < text.length) segments.push({ text: text.slice(cursor), mark: null })
+  return segments
+}
 
 export class ChapterView extends LitElement {
   static properties = {
@@ -19,6 +62,7 @@ export class ChapterView extends LitElement {
     _bookMeta: { state: true },
     _verses: { state: true },
     _error: { state: true },
+    _draft: { state: true },
   }
 
   static styles = css`
@@ -77,6 +121,34 @@ export class ChapterView extends LitElement {
       background: var(--md-sys-color-secondary);
       color: var(--md-sys-color-on-secondary);
     }
+    mark {
+      border-radius: 3px;
+      padding: 1px 0;
+    }
+    .excerpt {
+      margin: 0 0 16px;
+      padding-left: 12px;
+      border-left: 3px solid var(--md-sys-color-outline-variant);
+      font-style: italic;
+    }
+    .colors {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .swatch {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      padding: 0;
+    }
+    .swatch[data-selected] {
+      border-color: var(--md-sys-color-primary);
+      outline: 2px solid var(--md-sys-color-primary);
+      outline-offset: 2px;
+    }
     nav.chapter-nav {
       display: flex;
       justify-content: space-between;
@@ -87,6 +159,7 @@ export class ChapterView extends LitElement {
   constructor() {
     super()
     this.fontScale = 1
+    this._draft = null
   }
 
   updated(changed) {
@@ -101,10 +174,12 @@ export class ChapterView extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback()
     this._teardownReadObserver()
+    clearTimeout(this._touchSelectionTimer)
   }
 
   async _load() {
     this._error = null
+    this._draft = null
     this._teardownReadObserver()
     try {
       const index = await bibleDataService.getIndex()
@@ -169,6 +244,9 @@ export class ChapterView extends LitElement {
   }
 
   _toggleBookmark(verseNum) {
+    // A click that ends a text selection isn't a bookmark tap — the selection
+    // handler owns that gesture.
+    if (this._selection()) return
     const { added } = storageService.toggleBookmark(this.bookId, this.chapter, verseNum)
     this.requestUpdate()
 
@@ -191,12 +269,148 @@ export class ChapterView extends LitElement {
     }
   }
 
+  /**
+   * The live selection as a verse-relative range, or null when there's nothing
+   * usable: collapsed, outside the verse text, or spanning two verses (offsets
+   * are stored per verse, so cross-verse selections have nowhere to live).
+   */
+  _selection() {
+    const sel = this.renderRoot.getSelection?.() ?? document.getSelection()
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null
+    const range = sel.getRangeAt(0)
+    const el = closestVerseText(range.startContainer)
+    if (!el || el !== closestVerseText(range.endContainer)) return null
+
+    let start = offsetWithin(el, range.startContainer, range.startOffset)
+    let end = offsetWithin(el, range.endContainer, range.endOffset)
+    if (start === null || end === null) return null
+    if (start > end) [start, end] = [end, start]
+
+    // Selection handles routinely overshoot onto the surrounding spaces.
+    const full = el.textContent
+    while (start < end && /\s/.test(full[start])) start++
+    while (end > start && /\s/.test(full[end - 1])) end--
+    if (end <= start) return null
+
+    return {
+      verse: Number(el.dataset.verseText),
+      startOffset: start,
+      endOffset: end,
+      text: full.slice(start, end),
+    }
+  }
+
+  _onPointerSelection() {
+    if (this._draft) return
+    const selection = this._selection()
+    if (!selection) return
+    this._draft = { ...selection, id: null, color: MARK_COLORS[0].id }
+  }
+
+  _onTouchEnd() {
+    clearTimeout(this._touchSelectionTimer)
+    this._touchSelectionTimer = setTimeout(
+      () => this._onPointerSelection(),
+      TOUCH_SELECTION_SETTLE_MS
+    )
+  }
+
+  _editMark(event, mark) {
+    event.stopPropagation()
+    this._draft = { ...mark }
+  }
+
+  _pickColor(colorId) {
+    this._draft = { ...this._draft, color: colorId }
+  }
+
+  _closeDialog() {
+    this._draft = null
+  }
+
+  _saveMark() {
+    const draft = this._draft
+    if (!draft) return
+    if (draft.id) {
+      storageService.setMarkedTextColor(draft.id, draft.color)
+    } else {
+      storageService.addMarkedText({
+        book: this.bookId,
+        chapter: this.chapter,
+        verse: draft.verse,
+        startOffset: draft.startOffset,
+        endOffset: draft.endOffset,
+        color: draft.color,
+        text: draft.text,
+      })
+    }
+    this._clearSelection()
+    this._draft = null
+  }
+
+  _deleteMark() {
+    if (this._draft?.id) storageService.removeMarkedText(this._draft.id)
+    this._draft = null
+  }
+
+  _clearSelection() {
+    const sel = this.renderRoot.getSelection?.() ?? document.getSelection()
+    sel?.removeAllRanges()
+  }
+
   _goToChapter(delta) {
     if (!this._bookMeta) return
     const next = this.chapter + delta
     if (next >= 1 && next <= this._bookMeta.chapters) {
       navigateToChapter(this.bookId, next)
     }
+  }
+
+  _renderVerseText(text, marks) {
+    return segmentVerse(text, marks).map(({ text: run, mark }) => {
+      if (!mark) return run
+      const color = markColor(mark.color)
+      return html`<mark
+        style="background:${color.background};color:${MARK_TEXT_COLOR}"
+        title="Toque para alterar ou remover a marcação"
+        @click=${(e) => this._editMark(e, mark)}
+        >${run}</mark
+      >`
+    })
+  }
+
+  _renderMarkDialog() {
+    const draft = this._draft
+    return html`
+      <md-dialog ?open=${!!draft} @closed=${this._closeDialog}>
+        <div slot="headline">${draft?.id ? 'Editar marcação' : 'Marcar texto'}</div>
+        <div slot="content">
+          <p class="excerpt">“${draft?.text}”</p>
+          <div class="colors">
+            ${MARK_COLORS.map(
+              (color) => html`
+                <button
+                  type="button"
+                  class="swatch"
+                  aria-label=${color.label}
+                  title=${color.label}
+                  ?data-selected=${draft?.color === color.id}
+                  style="background:${color.background}"
+                  @click=${() => this._pickColor(color.id)}
+                ></button>
+              `
+            )}
+          </div>
+        </div>
+        <div slot="actions">
+          ${draft?.id
+            ? html`<md-text-button @click=${this._deleteMark}>Remover</md-text-button>`
+            : ''}
+          <md-text-button @click=${this._closeDialog}>Cancelar</md-text-button>
+          <md-filled-button @click=${this._saveMark}>Salvar</md-filled-button>
+        </div>
+      </md-dialog>
+    `
   }
 
   render() {
@@ -212,7 +426,7 @@ export class ChapterView extends LitElement {
           <a class="book-link" href="#/${this.bookId}">${this._bookMeta.name}</a> ${this.chapter}
         </h1>
       </header>
-      <div class="verses">
+      <div class="verses" @mouseup=${this._onPointerSelection} @touchend=${this._onTouchEnd}>
         ${(() => {
           const bookmarkedVerses = new Set(
             storageService
@@ -226,6 +440,12 @@ export class ChapterView extends LitElement {
               .filter((v) => v.book === this.bookId && v.chapter === this.chapter)
               .map((v) => v.verse)
           )
+          const marksByVerse = new Map()
+          for (const mark of storageService.getMarkedTextsForChapter(this.bookId, this.chapter)) {
+            const list = marksByVerse.get(mark.verse)
+            if (list) list.push(mark)
+            else marksByVerse.set(mark.verse, [mark])
+          }
           return this._verses.map((text, i) => {
             const verseNum = i + 1
             const bookmarked = bookmarkedVerses.has(verseNum)
@@ -236,7 +456,7 @@ export class ChapterView extends LitElement {
                 data-verse=${verseNum}
                 ?data-bookmarked=${bookmarked}
                 ?data-read=${read}
-                title="Toque para marcar/desmarcar favorito"
+                title="Toque para marcar/desmarcar favorito; selecione um trecho para destacá-lo"
                 @click=${() => this._toggleBookmark(verseNum)}
               >
                 <span
@@ -244,12 +464,15 @@ export class ChapterView extends LitElement {
                   title="Toque para marcar/desmarcar como lido"
                   @click=${(e) => this._toggleVerseRead(e, verseNum)}
                   >${verseNum}</span
-                >${text}
+                ><span class="verse-text" data-verse-text=${verseNum}
+                  >${this._renderVerseText(text, marksByVerse.get(verseNum) ?? [])}</span
+                >
               </p>
             `
           })
         })()}
       </div>
+      ${this._renderMarkDialog()}
       <nav class="chapter-nav">
         <md-text-button ?disabled=${this.chapter <= 1} @click=${() => this._goToChapter(-1)}>
           ← Capítulo anterior
