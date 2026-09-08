@@ -144,8 +144,7 @@ export class AppShell extends LitElement {
       const userId = session?.user?.id ?? null
       if (userId && userId !== syncedUserId) {
         syncedUserId = userId
-        syncService.pullBookmarks(userId)
-        syncService.pullReadVerses(userId)
+        syncService.syncAll(userId)
       } else if (!userId) {
         syncedUserId = null
       }

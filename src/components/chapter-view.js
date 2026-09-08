@@ -1,7 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import { bibleDataService } from '../services/bible-data-service.js'
 import { storageService } from '../services/storage-service.js'
-import { authService } from '../services/auth-service.js'
 import { syncService } from '../services/sync-service.js'
 import { navigateToChapter } from '../router.js'
 import { MARK_COLORS, MARK_TEXT_COLOR, markColor } from '../mark-colors.js'
@@ -253,8 +252,11 @@ export class ChapterView extends LitElement {
     const newlyMarked = storageService.markVerseRead(this.bookId, this.chapter, verseNum)
     if (!newlyMarked) return
     this.requestUpdate()
-    const userId = authService.getCurrentUser()?.id
-    if (userId) syncService.pushVerseReadAdded(userId, this.bookId, this.chapter, verseNum)
+    syncService.enqueue('readVerse.add', {
+      book: this.bookId,
+      chapter: this.chapter,
+      verse: verseNum,
+    })
   }
 
   _toggleBookmark(verseNum) {
@@ -263,24 +265,22 @@ export class ChapterView extends LitElement {
     if (this._selection()) return
     const { added } = storageService.toggleBookmark(this.bookId, this.chapter, verseNum)
     this.requestUpdate()
-
-    const userId = authService.getCurrentUser()?.id
-    if (userId) {
-      if (added) syncService.pushBookmarkAdded(userId, this.bookId, this.chapter, verseNum)
-      else syncService.pushBookmarkRemoved(userId, this.bookId, this.chapter, verseNum)
-    }
+    syncService.enqueue(added ? 'bookmark.add' : 'bookmark.remove', {
+      book: this.bookId,
+      chapter: this.chapter,
+      verse: verseNum,
+    })
   }
 
   _toggleVerseRead(event, verseNum) {
     event.stopPropagation()
     const { added } = storageService.toggleReadVerse(this.bookId, this.chapter, verseNum)
     this.requestUpdate()
-
-    const userId = authService.getCurrentUser()?.id
-    if (userId) {
-      if (added) syncService.pushVerseReadAdded(userId, this.bookId, this.chapter, verseNum)
-      else syncService.pushVerseReadRemoved(userId, this.bookId, this.chapter, verseNum)
-    }
+    syncService.enqueue(added ? 'readVerse.add' : 'readVerse.remove', {
+      book: this.bookId,
+      chapter: this.chapter,
+      verse: verseNum,
+    })
   }
 
   /**

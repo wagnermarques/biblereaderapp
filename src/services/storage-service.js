@@ -5,6 +5,8 @@ const KEYS = {
   bookmarks: 'bible:bookmarks', // [{ book, chapter, verse }]
   markedTexts: 'bible:marked-texts', // [{ id, book, chapter, verse, startOffset, endOffset, color, text, createdAt }]
   readVerses: 'bible:read-verses', // [{ book, chapter, verse }]
+  outbox: 'bible:outbox', // [{ id, op, payload, createdAt, failed?, lastError? }]
+  lastSyncedAt: 'bible:last-synced-at', // ISO string of the last fully drained flush
 }
 
 function readJSON(key, fallback) {
@@ -74,6 +76,8 @@ function isInList(storageKey, keyFn, item) {
   const k = keyFn(item)
   return getList(storageKey).some((x) => keyFn(x) === k)
 }
+
+const MAX_OUTBOX_ENTRIES = 5000
 
 const bookmarkKey = (b) => `${b.book}:${b.chapter}:${b.verse}`
 const verseKey = (v) => `${v.book}:${v.chapter}:${v.verse}`
@@ -189,5 +193,51 @@ export const storageService = {
   },
   isVerseRead(book, chapter, verse) {
     return isInList(KEYS.readVerses, verseKey, { book, chapter, verse })
+  },
+
+  // A reader who never signs in still queues every verse auto-marked as read,
+  // so the outbox needs a ceiling or it grows without bound and eventually
+  // blows the storage quota. Oldest entries go first; see the note on
+  // sign-in bulk upload in sync-service for the real fix.
+  // The outbox is the record of changes that still have to reach Supabase.
+  // Local state is written immediately either way, so this is what keeps an
+  // offline change from being lost instead of silently diverging from remote.
+  getOutbox() {
+    return getList(KEYS.outbox)
+  },
+  /**
+   * Queues one change. Any pending entry for the same op and target is dropped
+   * first — repeating a change makes earlier copies redundant, and it bounds
+   * the queue at two entries per target however often the user toggles.
+   */
+  enqueue(op, payload) {
+    const target = JSON.stringify(payload)
+    const list = this.getOutbox().filter((e) => !(e.op === op && JSON.stringify(e.payload) === target))
+    const entry = { id: newId(), op, payload, createdAt: new Date().toISOString() }
+    list.push(entry)
+    writeJSON(KEYS.outbox, list.slice(-MAX_OUTBOX_ENTRIES))
+    return entry
+  },
+  removeOutboxEntry(id) {
+    writeJSON(
+      KEYS.outbox,
+      this.getOutbox().filter((e) => e.id !== id)
+    )
+  },
+  /** Marks an entry as rejected by the server, so the flusher stops retrying it. */
+  failOutboxEntry(id, lastError) {
+    const list = this.getOutbox()
+    const entry = list.find((e) => e.id === id)
+    if (!entry) return
+    entry.failed = true
+    entry.lastError = lastError
+    writeJSON(KEYS.outbox, list)
+  },
+
+  getLastSyncedAt() {
+    return readJSON(KEYS.lastSyncedAt, null)
+  },
+  setLastSyncedAt(iso) {
+    writeJSON(KEYS.lastSyncedAt, iso)
   },
 }
