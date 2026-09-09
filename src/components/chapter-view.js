@@ -10,9 +10,26 @@ import { MARK_COLORS, MARK_TEXT_COLOR, markColor } from '../mark-colors.js'
 const AUTO_READ_DWELL_MS = 1200
 // Fraction of a verse's height that must be visible to count as "being read".
 const AUTO_READ_VISIBLE_RATIO = 0.6
-// How long the selection must hold still before the dialog opens, so dragging
-// a handle across a phrase doesn't pop the dialog on every intermediate word.
-const SELECTION_SETTLE_MS = 400
+// How long the selection must hold still before the bar reacts. The bar covers
+// nothing the reader is looking at, so this only damps the churn of dragging a
+// handle across a phrase; it is not a wait for the selection to be final.
+const SELECTION_TRACK_MS = 120
+// Space left between the bottom of the selection and the top of the bar when
+// scrolling a selection out from behind it.
+const REVEAL_GAP = 8
+
+/** Nearest scrollable ancestor, crossing shadow boundaries. */
+function scrollParent(el) {
+  let node = el.parentNode ?? el.host
+  while (node) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const overflow = getComputedStyle(node).overflowY
+      if (/(auto|scroll)/.test(overflow) && node.scrollHeight > node.clientHeight) return node
+    }
+    node = node.parentNode ?? node.host
+  }
+  return null
+}
 
 /** Character offset of (node, offset) counted from the start of `root`'s text. */
 function offsetWithin(root, node, offset) {
@@ -61,7 +78,8 @@ export class ChapterView extends LitElement {
     _bookMeta: { state: true },
     _verses: { state: true },
     _error: { state: true },
-    _draft: { state: true },
+    _sel: { state: true },
+    _editing: { state: true },
   }
 
   static styles = css`
@@ -70,6 +88,9 @@ export class ChapterView extends LitElement {
       max-width: 720px;
       margin: 0 auto;
       padding: 16px 24px 64px;
+    }
+    :host([data-bar-open]) {
+      padding-bottom: 128px;
     }
     header {
       display: flex;
@@ -124,14 +145,27 @@ export class ChapterView extends LitElement {
       border-radius: 3px;
       padding: 1px 0;
     }
-    .excerpt {
-      margin: 0 0 16px;
-      padding-left: 12px;
-      border-left: 3px solid var(--md-sys-color-outline-variant);
-      font-style: italic;
+    .mark-bar {
+      position: fixed;
+      left: 50%;
+      bottom: 0;
+      transform: translateX(-50%);
+      z-index: 5;
+      box-sizing: border-box;
+      width: min(100%, 720px);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      border-top: 1px solid var(--md-sys-color-outline);
+      box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.18);
     }
     .colors {
       display: flex;
+      flex: 1;
       flex-wrap: wrap;
       gap: 12px;
     }
@@ -158,20 +192,30 @@ export class ChapterView extends LitElement {
   constructor() {
     super()
     this.fontScale = 1
-    this._draft = null
+    this._sel = null
+    this._editing = null
     // Android hands a long-press to its own selection UI and dispatches
     // touchcancel rather than touchend, so a touch-event trigger never fires
     // for the very gesture that selects text. selectionchange is the signal
     // the browser actually emits, whatever the input method.
     this._onSelectionChange = () => {
       clearTimeout(this._selectionTimer)
-      this._selectionTimer = setTimeout(() => this._openDialogForSelection(), SELECTION_SETTLE_MS)
+      this._selectionTimer = setTimeout(() => this._trackSelection(), SELECTION_TRACK_MS)
+    }
+    // Editing an existing mark has no selection to collapse, so a tap anywhere
+    // outside the bar is what dismisses it.
+    this._onDocumentPointerDown = (event) => {
+      if (!this._editing) return
+      const bar = this.renderRoot.querySelector('.mark-bar')
+      if (bar && event.composedPath().includes(bar)) return
+      this._editing = null
     }
   }
 
   connectedCallback() {
     super.connectedCallback()
     document.addEventListener('selectionchange', this._onSelectionChange)
+    document.addEventListener('pointerdown', this._onDocumentPointerDown, true)
   }
 
   updated(changed) {
@@ -181,18 +225,21 @@ export class ChapterView extends LitElement {
     if (changed.has('fontScale')) {
       this.style.setProperty('--font-scale', String(this.fontScale))
     }
+    this.toggleAttribute('data-bar-open', this._barOpen)
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
     this._teardownReadObserver()
     document.removeEventListener('selectionchange', this._onSelectionChange)
+    document.removeEventListener('pointerdown', this._onDocumentPointerDown, true)
     clearTimeout(this._selectionTimer)
   }
 
   async _load() {
     this._error = null
-    this._draft = null
+    this._sel = null
+    this._editing = null
     this._teardownReadObserver()
     try {
       const index = await bibleDataService.getIndex()
@@ -314,55 +361,92 @@ export class ChapterView extends LitElement {
     }
   }
 
-  _openDialogForSelection() {
-    if (this._draft) return
-    const selection = this._selection()
-    if (!selection) return
-    this._draft = { ...selection, id: null, color: MARK_COLORS[0].id }
+  get _barOpen() {
+    return !!(this._sel || this._editing)
   }
 
-  /** A finished mouse drag needs no settling delay — open right away. */
-  _onMouseUp() {
-    clearTimeout(this._selectionTimer)
-    this._openDialogForSelection()
+  /**
+   * Follows the live selection instead of waiting for a final one. The bar can
+   * appear while the reader is still dragging a handle, because the mark is cut
+   * from whatever is selected at the moment a color is tapped, not from what was
+   * selected when the bar appeared.
+   */
+  _trackSelection() {
+    const selection = this._selection()
+    if (selection) {
+      const wasOpen = this._barOpen
+      this._editing = null
+      this._sel = selection
+      if (!wasOpen) this._revealAboveBar(this._selectionRect())
+    } else if (this._sel) {
+      this._sel = null
+    }
   }
 
   _editMark(event, mark) {
     event.stopPropagation()
-    this._draft = { ...mark }
+    this._sel = null
+    this._editing = mark
+    this._revealAboveBar(event.currentTarget.getBoundingClientRect())
   }
 
-  _pickColor(colorId) {
-    this._draft = { ...this._draft, color: colorId }
+  /**
+   * Keeps the selection alive across the tap: the default action of a pointer
+   * press outside the selection is to collapse it, which would leave nothing to
+   * mark by the time the click lands.
+   */
+  _onBarPointerDown(event) {
+    event.preventDefault()
   }
 
-  _closeDialog() {
-    this._draft = null
-  }
-
-  _saveMark() {
-    const draft = this._draft
-    if (!draft) return
-    if (draft.id) {
-      storageService.setMarkedTextColor(draft.id, draft.color)
+  _applyColor(colorId) {
+    if (this._editing) {
+      storageService.setMarkedTextColor(this._editing.id, colorId)
+      this._editing = null
     } else {
+      // Re-read rather than trusting what opened the bar, so handles dragged
+      // after it appeared still land on the right words.
+      const selection = this._selection() ?? this._sel
+      if (!selection) return
       storageService.addMarkedText({
         book: this.bookId,
         chapter: this.chapter,
-        verse: draft.verse,
-        startOffset: draft.startOffset,
-        endOffset: draft.endOffset,
-        color: draft.color,
-        text: draft.text,
+        verse: selection.verse,
+        startOffset: selection.startOffset,
+        endOffset: selection.endOffset,
+        color: colorId,
+        text: selection.text,
       })
+      this._clearSelection()
+      this._sel = null
     }
-    this._clearSelection()
-    this._draft = null
+    this.requestUpdate()
   }
 
-  _deleteMark() {
-    if (this._draft?.id) storageService.removeMarkedText(this._draft.id)
-    this._draft = null
+  _removeMark() {
+    if (this._editing) storageService.removeMarkedText(this._editing.id)
+    this._editing = null
+    this.requestUpdate()
+  }
+
+  /** Bounding box of the live selection, or null when there isn't one. */
+  _selectionRect() {
+    const sel = this.renderRoot.getSelection?.() ?? document.getSelection()
+    if (!sel || sel.rangeCount === 0) return null
+    return sel.getRangeAt(0).getBoundingClientRect()
+  }
+
+  /** Scrolls whatever the bar would cover back into view once it's on screen. */
+  async _revealAboveBar(rect) {
+    if (!rect) return
+    await this.updateComplete
+    const bar = this.renderRoot.querySelector('.mark-bar')
+    if (!bar) return
+    const overlap = rect.bottom - bar.getBoundingClientRect().top + REVEAL_GAP
+    if (overlap > 0) {
+      const target = scrollParent(this) ?? window
+      target.scrollBy({ top: overlap, behavior: 'smooth' })
+    }
   }
 
   _clearSelection() {
@@ -384,44 +468,44 @@ export class ChapterView extends LitElement {
       const color = markColor(mark.color)
       return html`<mark
         style="background:${color.background};color:${MARK_TEXT_COLOR}"
-        title="Toque para alterar ou remover a marcação"
+        title="Toque para recolorir ou remover a marcação"
         @click=${(e) => this._editMark(e, mark)}
         >${run}</mark
       >`
     })
   }
 
-  _renderMarkDialog() {
-    const draft = this._draft
+  _renderMarkBar() {
+    if (!this._barOpen) return ''
+    const current = this._editing?.color
     return html`
-      <md-dialog ?open=${!!draft} @closed=${this._closeDialog}>
-        <div slot="headline">${draft?.id ? 'Editar marcação' : 'Marcar texto'}</div>
-        <div slot="content">
-          <p class="excerpt">“${draft?.text}”</p>
-          <div class="colors">
-            ${MARK_COLORS.map(
-              (color) => html`
-                <button
-                  type="button"
-                  class="swatch"
-                  aria-label=${color.label}
-                  title=${color.label}
-                  ?data-selected=${draft?.color === color.id}
-                  style="background:${color.background}"
-                  @click=${() => this._pickColor(color.id)}
-                ></button>
-              `
-            )}
-          </div>
+      <div
+        class="mark-bar"
+        role="toolbar"
+        aria-label=${this._editing ? 'Editar marcação' : 'Marcar texto'}
+        @pointerdown=${this._onBarPointerDown}
+      >
+        <div class="colors">
+          ${MARK_COLORS.map(
+            (color) => html`
+              <button
+                type="button"
+                class="swatch"
+                aria-label=${color.label}
+                title=${color.label}
+                ?data-selected=${current === color.id}
+                style="background:${color.background}"
+                @click=${() => this._applyColor(color.id)}
+              ></button>
+            `
+          )}
         </div>
-        <div slot="actions">
-          ${draft?.id
-            ? html`<md-text-button @click=${this._deleteMark}>Remover</md-text-button>`
-            : ''}
-          <md-text-button @click=${this._closeDialog}>Cancelar</md-text-button>
-          <md-filled-button @click=${this._saveMark}>Salvar</md-filled-button>
-        </div>
-      </md-dialog>
+        ${this._editing
+          ? html`<md-icon-button aria-label="Remover marcação" @click=${this._removeMark}>
+              <md-icon>delete</md-icon>
+            </md-icon-button>`
+          : ''}
+      </div>
     `
   }
 
@@ -438,7 +522,7 @@ export class ChapterView extends LitElement {
           <a class="book-link" href="#/${this.bookId}">${this._bookMeta.name}</a> ${this.chapter}
         </h1>
       </header>
-      <div class="verses" @mouseup=${this._onMouseUp}>
+      <div class="verses">
         ${(() => {
           const bookmarkedVerses = new Set(
             storageService
@@ -484,7 +568,7 @@ export class ChapterView extends LitElement {
           })
         })()}
       </div>
-      ${this._renderMarkDialog()}
+      ${this._renderMarkBar()}
       <nav class="chapter-nav">
         <md-text-button ?disabled=${this.chapter <= 1} @click=${() => this._goToChapter(-1)}>
           ← Capítulo anterior
