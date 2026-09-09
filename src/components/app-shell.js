@@ -5,6 +5,7 @@ import './chapter-grid-view.js'
 import './search-view.js'
 import './book-list-view.js'
 import './purpose-view.js'
+import './marked-texts-view.js'
 import './account-view.js'
 import './nav-accordion.js'
 import './sync-status.js'
@@ -15,6 +16,7 @@ import {
   navigateToBooks,
   navigateToPurpose,
   navigateToAccount,
+  navigateToMarkedTexts,
 } from '../router.js'
 import { storageService } from '../services/storage-service.js'
 import { searchService } from '../services/search-service.js'
@@ -246,6 +248,16 @@ export class AppShell extends LitElement {
               </md-list-item>
             </md-list>
           </nav-accordion>
+          <nav-accordion label="Marcações">
+            <md-list>
+              <md-list-item
+                type="button"
+                @click=${() => this._selectDrawerItem(navigateToMarkedTexts)}
+              >
+                Meus destaques
+              </md-list-item>
+            </md-list>
+          </nav-accordion>
           <nav-accordion label="Sobre">
             <md-list>
               <md-list-item type="button" @click=${() => this._selectDrawerItem(navigateToPurpose)}>
@@ -283,6 +295,7 @@ export class AppShell extends LitElement {
           <chapter-view
             book-id=${this._route.book}
             chapter=${this._route.chapter}
+            verse=${this._route.verse ?? 0}
             font-scale=${this._fontScale}
           ></chapter-view>
         `
@@ -292,6 +305,8 @@ export class AppShell extends LitElement {
         return html`<search-view .query=${this._route.query.q ?? ''}></search-view>`
       case 'books':
         return html`<book-list-view></book-list-view>`
+      case 'marked-texts':
+        return html`<marked-texts-view></marked-texts-view>`
       case 'about-purpose':
         return html`<purpose-view></purpose-view>`
       case 'account':

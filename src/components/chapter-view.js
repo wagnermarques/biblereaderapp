@@ -17,6 +17,8 @@ const SELECTION_TRACK_MS = 120
 // Space left between the bottom of the selection and the top of the bar when
 // scrolling a selection out from behind it.
 const REVEAL_GAP = 8
+// How long the verse opened from a highlight stays tinted before fading back.
+const VERSE_FLASH_MS = 1600
 
 /** Nearest scrollable ancestor, crossing shadow boundaries. */
 function scrollParent(el) {
@@ -74,6 +76,7 @@ export class ChapterView extends LitElement {
   static properties = {
     bookId: { attribute: 'book-id' },
     chapter: { type: Number },
+    verse: { type: Number },
     fontScale: { type: Number, attribute: 'font-scale' },
     _bookMeta: { state: true },
     _verses: { state: true },
@@ -126,6 +129,17 @@ export class ChapterView extends LitElement {
     }
     .verse[data-read] {
       opacity: 0.7;
+    }
+    .verse.flash {
+      animation: verse-flash 1.6s ease-out;
+    }
+    @keyframes verse-flash {
+      from {
+        background: var(--md-sys-color-primary-container);
+      }
+      to {
+        background: transparent;
+      }
     }
     .verse-num {
       font-weight: 600;
@@ -221,6 +235,10 @@ export class ChapterView extends LitElement {
   updated(changed) {
     if (changed.has('bookId') || changed.has('chapter')) {
       this._load()
+    } else if (changed.has('verse')) {
+      // Same chapter, different target — e.g. two highlights in one chapter
+      // opened one after the other, which never reloads the verses.
+      this._revealVerse()
     }
     if (changed.has('fontScale')) {
       this.style.setProperty('--font-scale', String(this.fontScale))
@@ -234,6 +252,7 @@ export class ChapterView extends LitElement {
     document.removeEventListener('selectionchange', this._onSelectionChange)
     document.removeEventListener('pointerdown', this._onDocumentPointerDown, true)
     clearTimeout(this._selectionTimer)
+    clearTimeout(this._flashTimer)
   }
 
   async _load() {
@@ -249,6 +268,7 @@ export class ChapterView extends LitElement {
       this.scrollTop = 0
       await this.updateComplete
       this._setupReadObserver()
+      this._revealVerse()
     } catch (err) {
       this._error = err.message
       this._verses = null
@@ -427,6 +447,23 @@ export class ChapterView extends LitElement {
     if (this._editing) storageService.removeMarkedText(this._editing.id)
     this._editing = null
     this.requestUpdate()
+  }
+
+  /**
+   * Brings the verse the reader was sent to into view and tints it briefly, so
+   * arriving from the highlights list doesn't land at the top of a long chapter
+   * with no clue which verse was meant.
+   */
+  _revealVerse() {
+    if (!this.verse) return
+    const el = this.renderRoot.querySelector(`.verse[data-verse="${this.verse}"]`)
+    if (!el) return
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    el.classList.remove('flash')
+    // Re-adding the class in the same frame wouldn't restart the animation.
+    requestAnimationFrame(() => el.classList.add('flash'))
+    clearTimeout(this._flashTimer)
+    this._flashTimer = setTimeout(() => el.classList.remove('flash'), VERSE_FLASH_MS)
   }
 
   /** Bounding box of the live selection, or null when there isn't one. */

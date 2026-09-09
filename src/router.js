@@ -4,8 +4,9 @@
  *   #/livros                -> book list page
  *   #/sobre/objetivo        -> about/purpose page
  *   #/conta                 -> account/login page
+ *   #/marcacoes             -> list of highlighted excerpts
  *   #/:book                 -> chapter picker grid for that book
- *   #/:book/:chapter        -> reading view
+ *   #/:book/:chapter[?v=n]  -> reading view, optionally opened at one verse
  *   #/search?q=...          -> search results
  */
 
@@ -40,13 +41,23 @@ function parseHash() {
   if (segments[0] === 'conta') {
     return { name: 'account' }
   }
+  if (segments[0] === 'marcacoes') {
+    return { name: 'marked-texts' }
+  }
   if (segments.length === 0) {
     return { name: 'home' }
   }
   if (segments.length === 1) {
     return { name: 'book-chapters', book: segments[0] }
   }
-  return { name: 'chapter', book: segments[0], chapter: Number(segments[1]) || 1 }
+  return {
+    name: 'chapter',
+    book: segments[0],
+    chapter: Number(segments[1]) || 1,
+    // Present when the reader was opened from a highlight, so the view knows
+    // which verse to scroll to instead of starting at the top of the chapter.
+    verse: Number(query.v) || null,
+  }
 }
 
 export function createRouter(onChange) {
@@ -68,8 +79,8 @@ export function createRouter(onChange) {
   return () => window.removeEventListener('hashchange', handler)
 }
 
-export function navigateToChapter(bookId, chapter) {
-  location.hash = `#/${bookId}/${chapter}`
+export function navigateToChapter(bookId, chapter, verse = null) {
+  location.hash = verse ? `#/${bookId}/${chapter}?v=${verse}` : `#/${bookId}/${chapter}`
 }
 
 export function navigateToBookChapters(bookId) {
@@ -94,4 +105,8 @@ export function navigateToPurpose() {
 
 export function navigateToAccount() {
   location.hash = '#/conta'
+}
+
+export function navigateToMarkedTexts() {
+  location.hash = '#/marcacoes'
 }
