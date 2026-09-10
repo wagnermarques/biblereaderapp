@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import { bibleDataService } from '../services/bible-data-service.js'
-import { storageService } from '../services/storage-service.js'
+import { storageService, markGroupId } from '../services/storage-service.js'
 import { markColor } from '../mark-colors.js'
 import { navigateToChapter } from '../router.js'
 
@@ -92,25 +92,47 @@ export class MarkedTextsView extends LitElement {
           order: order.get(mark.book) ?? Number.MAX_SAFE_INTEGER,
           title: `${names.get(mark.book) ?? mark.book} ${mark.chapter}`,
           chapter: mark.chapter,
-          marks: [],
+          highlights: new Map(),
         }
         groups.set(key, group)
       }
-      group.marks.push(mark)
+      // A highlight dragged across verses is stored as one record per verse;
+      // the reader made one highlight, so the list shows it as one entry.
+      const id = markGroupId(mark)
+      const highlight = group.highlights.get(id)
+      if (highlight) highlight.pieces.push(mark)
+      else group.highlights.set(id, { id, pieces: [mark] })
     }
     for (const group of groups.values()) {
-      group.marks.sort((a, b) => a.verse - b.verse || a.startOffset - b.startOffset)
+      group.highlights = [...group.highlights.values()]
+      for (const highlight of group.highlights) {
+        highlight.pieces.sort((a, b) => a.verse - b.verse || a.startOffset - b.startOffset)
+        const first = highlight.pieces[0]
+        const last = highlight.pieces[highlight.pieces.length - 1]
+        highlight.color = first.color
+        highlight.book = first.book
+        highlight.chapter = first.chapter
+        highlight.verse = first.verse
+        highlight.text = highlight.pieces.map((m) => m.text).join(' ')
+        highlight.ref =
+          first.verse === last.verse
+            ? `Versículo ${first.verse}`
+            : `Versículos ${first.verse}-${last.verse}`
+      }
+      group.highlights.sort(
+        (a, b) => a.verse - b.verse || a.pieces[0].startOffset - b.pieces[0].startOffset
+      )
     }
     return [...groups.values()].sort((a, b) => a.order - b.order || a.chapter - b.chapter)
   }
 
-  _open(mark) {
-    navigateToChapter(mark.book, mark.chapter, mark.verse)
+  _open(highlight) {
+    navigateToChapter(highlight.book, highlight.chapter, highlight.verse)
   }
 
-  _remove(event, mark) {
+  _remove(event, highlight) {
     event.stopPropagation()
-    storageService.removeMarkedText(mark.id)
+    storageService.removeMarkedGroup(highlight.id)
     this._marks = storageService.getMarkedTexts()
   }
 
@@ -128,24 +150,24 @@ export class MarkedTextsView extends LitElement {
         : this._groups().map(
             (group) => html`
               <h2>${group.title}</h2>
-              ${group.marks.map(
-                (mark) => html`
+              ${group.highlights.map(
+                (highlight) => html`
                   <div
                     class="mark"
                     role="button"
                     tabindex="0"
                     title="Abrir no capítulo"
-                    style="border-left-color:${markColor(mark.color).background}"
-                    @click=${() => this._open(mark)}
-                    @keydown=${(e) => (e.key === 'Enter' ? this._open(mark) : null)}
+                    style="border-left-color:${markColor(highlight.color).background}"
+                    @click=${() => this._open(highlight)}
+                    @keydown=${(e) => (e.key === 'Enter' ? this._open(highlight) : null)}
                   >
                     <div class="body">
-                      <p class="excerpt">“${mark.text}”</p>
-                      <span class="ref">Versículo ${mark.verse}</span>
+                      <p class="excerpt">“${highlight.text}”</p>
+                      <span class="ref">${highlight.ref}</span>
                     </div>
                     <md-icon-button
                       aria-label="Remover destaque"
-                      @click=${(e) => this._remove(e, mark)}
+                      @click=${(e) => this._remove(e, highlight)}
                     >
                       <md-icon>delete</md-icon>
                     </md-icon-button>

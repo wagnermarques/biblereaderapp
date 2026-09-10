@@ -3,7 +3,7 @@ const KEYS = {
   fontScale: 'bible:font-scale', // number, 1 = default
   lastRead: 'bible:last-read', // { book, chapter }
   bookmarks: 'bible:bookmarks', // [{ book, chapter, verse }]
-  markedTexts: 'bible:marked-texts', // [{ id, book, chapter, verse, startOffset, endOffset, color, text, createdAt }]
+  markedTexts: 'bible:marked-texts', // [{ id, groupId, book, chapter, verse, startOffset, endOffset, color, text, createdAt }]
   readVerses: 'bible:read-verses', // [{ book, chapter, verse }]
   outbox: 'bible:outbox', // [{ id, op, payload, createdAt, failed?, lastError? }]
   lastSyncedAt: 'bible:last-synced-at', // ISO string of the last fully drained flush
@@ -79,6 +79,11 @@ function isInList(storageKey, keyFn, item) {
 
 const MAX_OUTBOX_ENTRIES = 5000
 
+// One highlight dragged across a verse boundary is stored as one record per
+// verse, all sharing a group id. Marks written before groups existed have none,
+// so they stand alone as a group of one.
+export const markGroupId = (mark) => mark.groupId ?? mark.id
+
 const bookmarkKey = (b) => `${b.book}:${b.chapter}:${b.verse}`
 const verseKey = (v) => `${v.book}:${v.chapter}:${v.verse}`
 
@@ -141,11 +146,18 @@ export const storageService = {
   getMarkedTextsForChapter(book, chapter) {
     return this.getMarkedTexts().filter((m) => m.book === book && m.chapter === chapter)
   },
-  /** Persists a new excerpt and returns the stored record (id/createdAt filled in). */
-  addMarkedText({ book, chapter, verse, startOffset, endOffset, color, text }) {
+  /**
+   * Persists one highlight as a record per verse it covers, all sharing a group
+   * id, and returns the stored records. A highlight inside a single verse is
+   * just the one-piece case of the same thing.
+   */
+  addMarkedTexts(pieces) {
     const list = this.getMarkedTexts()
-    const mark = {
+    const groupId = newId()
+    const createdAt = new Date().toISOString()
+    const marks = pieces.map(({ book, chapter, verse, startOffset, endOffset, color, text }) => ({
       id: newId(),
+      groupId,
       book,
       chapter,
       verse,
@@ -153,26 +165,27 @@ export const storageService = {
       endOffset,
       color,
       text,
-      createdAt: new Date().toISOString(),
-    }
-    list.push(mark)
+      createdAt,
+    }))
+    list.push(...marks)
     writeJSON(KEYS.markedTexts, list)
-    return mark
+    return marks
   },
-  setMarkedTextColor(id, color) {
+  /** Recolors every piece of a highlight, so a multi-verse one stays one color. */
+  setMarkedGroupColor(groupId, color) {
     const list = this.getMarkedTexts()
-    const mark = list.find((m) => m.id === id)
-    if (!mark) return null
-    mark.color = color
+    const marks = list.filter((m) => markGroupId(m) === groupId)
+    if (!marks.length) return []
+    for (const mark of marks) mark.color = color
     writeJSON(KEYS.markedTexts, list)
-    return mark
+    return marks
   },
-  removeMarkedText(id) {
+  /** Removes a highlight whole, including the pieces in its other verses. */
+  removeMarkedGroup(groupId) {
     const list = this.getMarkedTexts()
-    const idx = list.findIndex((m) => m.id === id)
-    if (idx < 0) return false
-    list.splice(idx, 1)
-    writeJSON(KEYS.markedTexts, list)
+    const kept = list.filter((m) => markGroupId(m) !== groupId)
+    if (kept.length === list.length) return false
+    writeJSON(KEYS.markedTexts, kept)
     return true
   },
 

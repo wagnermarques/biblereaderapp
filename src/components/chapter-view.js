@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import { bibleDataService } from '../services/bible-data-service.js'
-import { storageService } from '../services/storage-service.js'
+import { storageService, markGroupId } from '../services/storage-service.js'
 import { syncService } from '../services/sync-service.js'
 import { navigateToChapter } from '../router.js'
 import { MARK_COLORS, MARK_TEXT_COLOR, markColor } from '../mark-colors.js'
@@ -45,11 +45,40 @@ function offsetWithin(root, node, offset) {
   return range.toString().length
 }
 
-/** Nearest enclosing verse-text span, or null if the node sits outside one. */
-function closestVerseText(node) {
-  let el = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node
-  while (el && !el.classList?.contains('verse-text')) el = el.parentElement
-  return el
+/**
+ * The part of `range` that falls inside one verse span, as a verse-relative
+ * piece, or null when nothing but whitespace is left. The first and last verse
+ * of a drag keep the selection's own boundary; the verses in between are
+ * covered end to end.
+ */
+function clipToVerse(range, el) {
+  const clipped = document.createRange()
+  clipped.selectNodeContents(el)
+  if (clipped.compareBoundaryPoints(Range.START_TO_START, range) < 0) {
+    clipped.setStart(range.startContainer, range.startOffset)
+  }
+  if (clipped.compareBoundaryPoints(Range.END_TO_END, range) > 0) {
+    clipped.setEnd(range.endContainer, range.endOffset)
+  }
+  let start = offsetWithin(el, clipped.startContainer, clipped.startOffset)
+  let end = offsetWithin(el, clipped.endContainer, clipped.endOffset)
+  if (start === null || end === null) return null
+  if (start > end) [start, end] = [end, start]
+
+  // Selection handles routinely overshoot onto the surrounding spaces, and a
+  // drag that stops just past a verse boundary leaves the next verse with
+  // nothing but whitespace in it.
+  const full = el.textContent
+  while (start < end && /\s/.test(full[start])) start++
+  while (end > start && /\s/.test(full[end - 1])) end--
+  if (end <= start) return null
+
+  return {
+    verse: Number(el.dataset.verseText),
+    startOffset: start,
+    endOffset: end,
+    text: full.slice(start, end),
+  }
 }
 
 /**
@@ -351,34 +380,22 @@ export class ChapterView extends LitElement {
   }
 
   /**
-   * The live selection as a verse-relative range, or null when there's nothing
-   * usable: collapsed, outside the verse text, or spanning two verses (offsets
-   * are stored per verse, so cross-verse selections have nowhere to live).
+   * The live selection as one entry per verse it touches, or null when there's
+   * nothing usable: collapsed, or outside the verse text. Offsets are stored
+   * per verse, so a selection dragged across a verse boundary comes back split
+   * at the boundaries rather than rejected.
    */
   _selection() {
     const sel = this.renderRoot.getSelection?.() ?? document.getSelection()
     if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null
     const range = sel.getRangeAt(0)
-    const el = closestVerseText(range.startContainer)
-    if (!el || el !== closestVerseText(range.endContainer)) return null
-
-    let start = offsetWithin(el, range.startContainer, range.startOffset)
-    let end = offsetWithin(el, range.endContainer, range.endOffset)
-    if (start === null || end === null) return null
-    if (start > end) [start, end] = [end, start]
-
-    // Selection handles routinely overshoot onto the surrounding spaces.
-    const full = el.textContent
-    while (start < end && /\s/.test(full[start])) start++
-    while (end > start && /\s/.test(full[end - 1])) end--
-    if (end <= start) return null
-
-    return {
-      verse: Number(el.dataset.verseText),
-      startOffset: start,
-      endOffset: end,
-      text: full.slice(start, end),
+    const pieces = []
+    for (const el of this.renderRoot.querySelectorAll('.verse-text')) {
+      if (!range.intersectsNode(el)) continue
+      const piece = clipToVerse(range, el)
+      if (piece) pieces.push(piece)
     }
+    return pieces.length ? pieces : null
   }
 
   get _barOpen() {
@@ -421,22 +438,24 @@ export class ChapterView extends LitElement {
 
   _applyColor(colorId) {
     if (this._editing) {
-      storageService.setMarkedTextColor(this._editing.id, colorId)
+      storageService.setMarkedGroupColor(markGroupId(this._editing), colorId)
       this._editing = null
     } else {
       // Re-read rather than trusting what opened the bar, so handles dragged
       // after it appeared still land on the right words.
-      const selection = this._selection() ?? this._sel
-      if (!selection) return
-      storageService.addMarkedText({
-        book: this.bookId,
-        chapter: this.chapter,
-        verse: selection.verse,
-        startOffset: selection.startOffset,
-        endOffset: selection.endOffset,
-        color: colorId,
-        text: selection.text,
-      })
+      const pieces = this._selection() ?? this._sel
+      if (!pieces) return
+      storageService.addMarkedTexts(
+        pieces.map((piece) => ({
+          book: this.bookId,
+          chapter: this.chapter,
+          verse: piece.verse,
+          startOffset: piece.startOffset,
+          endOffset: piece.endOffset,
+          color: colorId,
+          text: piece.text,
+        }))
+      )
       this._clearSelection()
       this._sel = null
     }
@@ -444,7 +463,7 @@ export class ChapterView extends LitElement {
   }
 
   _removeMark() {
-    if (this._editing) storageService.removeMarkedText(this._editing.id)
+    if (this._editing) storageService.removeMarkedGroup(markGroupId(this._editing))
     this._editing = null
     this.requestUpdate()
   }
