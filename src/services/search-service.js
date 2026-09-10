@@ -28,6 +28,14 @@ export const searchService = {
   },
 
   /**
+   * Drops the loaded text so the next search rebuilds it. Called when the
+   * reader switches Bibles — the loaded books belong to the old translation.
+   */
+  reset() {
+    allBooksLoaded = null
+  },
+
+  /**
    * Searches every loaded (or being-loaded) book for a query string.
    * Returns [{ bookId, bookName, chapter, verse, text }], capped at `limit`.
    */

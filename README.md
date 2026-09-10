@@ -12,22 +12,39 @@ Leitor de Bíblia offline, instalável, feito com Web Components (Lit + Material
 
 ## Texto bíblico
 
-O texto incluído é a tradução de **João Ferreira de Almeida (1911)**, em **domínio público**, obtida do projeto open source [BibliaJFAAL/JFAAL](https://github.com/BibliaJFAAL/JFAAL) (MIT license — pasta `original/`, explicitamente descrita ali como domínio público). Por ser a edição de 1911, o texto usa ortografia antiga (ex.: "creou", "fórma", "abysmo") — é autêntico, mas vai parecer arcaico para um leitor de português atual.
+O app traz **duas traduções**, ambas livres para redistribuição, e o leitor escolhe qual usar em **Bíblias → Listar Bíblicas** no menu lateral:
 
-Os dados ficam em `public/data/`:
+| id | Tradução | Licença | Fonte |
+| --- | --- | --- | --- |
+| `alm1911` | João Ferreira de Almeida (1911) | Domínio público | [BibliaJFAAL/JFAAL](https://github.com/BibliaJFAAL/JFAAL) (MIT — pasta `original/`, descrita ali como domínio público) |
+| `blivre` | Bíblia Livre (2018) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.pt_BR) — © 2018 Diego Santos, Mario Sérgio e Marco Teles | [eBible.org](https://ebible.org/find/show.php?id=porbr2018), JSON via [damarals/biblias](https://github.com/damarals/biblias) |
+
+A edição de Almeida de 1911 usa ortografia anterior às reformas ("creou", "fórma", "abysmo") — é autêntica, mas soa arcaica hoje; a Bíblia Livre é uma revisão do mesmo texto em ortografia atual. O catálogo mostrado na interface fica em `src/translations.js`.
+
+**Destaques são por tradução.** Uma marcação guarda posições de letras dentro de uma redação específica, então ela só aparece na Bíblia em que foi feita (marcações antigas, salvas antes desta divisão, contam como `alm1911`). Favoritos e capítulos lidos continuam valendo para todas — a versificação das duas é praticamente idêntica (diferem só em Salmos 46 e Apocalipse 12).
+
+Os dados ficam em `public/data/<id>/`:
 
 - `books-index.json` — lista leve dos 66 livros (id, nome, testamento, nº de capítulos).
 - `books/<id>.json` — texto completo de um livro (carregado sob demanda).
 
-Para regenerar os dados (ou trocar de tradução/fonte):
+Só a tradução padrão (`alm1911`, definida em `DEFAULT_TRANSLATION_ID`) entra no precache do service worker (~4 MB na instalação). As outras são baixadas na primeira leitura e ficam em cache a partir daí — veja a regra `/data/` em `vite.config.js`.
+
+Para regenerar os dados:
 
 ```bash
-curl -L -o source.json \
+curl -L -o alm1911.json \
   https://raw.githubusercontent.com/BibliaJFAAL/JFAAL/main/original/1911-JFAAtualizada.json
-node scripts/import-bible-data.mjs source.json
+node scripts/import-bible-data.mjs alm1911 alm1911.json
+
+curl -L -o blivre.json \
+  https://github.com/damarals/biblias/releases/download/v1.0.0/BLIVRE.json
+node scripts/import-bible-data.mjs blivre blivre.json
 ```
 
-Se quiser usar outra tradução, **verifique a licença antes de publicar** — muitas revisões modernas (NVI, ARA, NAA etc.) são protegidas por direitos autorais e não podem ser redistribuídas livremente num site público. `scripts/import-bible-data.mjs` espera o formato `books[].chapters[].verses[].text` usado pela JFAAL; adapte o script se a fonte tiver outro formato.
+Para acrescentar uma tradução: importe os dados com um novo id, acrescente a entrada correspondente em `src/translations.js` (nome, licença, link oficial) e confira que o id novo não é o do precache. `scripts/import-bible-data.mjs` reconhece dois formatos de origem (`books[].chapters[].verses[].text` e `[{ abbrev, chapters: [[texto]] }]`), ambos com os 66 livros em ordem canônica.
+
+**Verifique a licença antes de publicar qualquer outra tradução** — NVI, ARA, ARC, NAA, NTLH, NVT, ACF e a maioria das revisões modernas são protegidas por direitos autorais e não podem ser redistribuídas num site público. Opções livres além das duas já incluídas: Tradução Brasileira de 1917 (domínio público) e Open Nova Bíblia Viva (CC BY-SA 4.0).
 
 ## Login e sincronização (opcional)
 
@@ -72,7 +89,7 @@ src/
   router.js       # hash router
   main.js
 public/
-  data/           # books-index.json + books/*.json (texto bíblico)
+  data/<tradução>/   # books-index.json + books/*.json (texto bíblico de cada tradução)
   icons/          # ícones do PWA (gerados a partir de favicon.svg — veja "Ícone do PWA")
 scripts/
   import-bible-data.mjs   # converte uma fonte JSON externa para o formato usado aqui
@@ -88,6 +105,7 @@ supabase/
 - Leitura por capítulo com navegação anterior/próximo
 - Busca em texto completo (ignora acentos)
 - Favoritos de versículos (clique no versículo)
+- Escolha da tradução em "Bíblias → Listar Bíblicas", com licença e link oficial de cada uma
 - Tema claro/escuro/sistema
 - Ajuste de tamanho de fonte
 - Funciona offline após o primeiro carregamento (todo o texto bíblico é cacheado)

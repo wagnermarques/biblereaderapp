@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit'
+import { keyed } from 'lit/directives/keyed.js'
 import { registerSW } from 'virtual:pwa-register'
 import './chapter-view.js'
 import './chapter-grid-view.js'
@@ -6,6 +7,7 @@ import './search-view.js'
 import './book-list-view.js'
 import './purpose-view.js'
 import './marked-texts-view.js'
+import './bibles-view.js'
 import './account-view.js'
 import './nav-accordion.js'
 import './sync-status.js'
@@ -17,6 +19,7 @@ import {
   navigateToPurpose,
   navigateToAccount,
   navigateToMarkedTexts,
+  navigateToBibles,
 } from '../router.js'
 import { storageService } from '../services/storage-service.js'
 import { searchService } from '../services/search-service.js'
@@ -29,6 +32,7 @@ export class AppShell extends LitElement {
     _drawerOpen: { state: true },
     _theme: { state: true },
     _fontScale: { state: true },
+    _translationId: { state: true },
     _updateAvailable: { state: true },
   }
 
@@ -107,6 +111,7 @@ export class AppShell extends LitElement {
     this._drawerOpen = false
     this._theme = storageService.getTheme()
     this._fontScale = storageService.getFontScale()
+    this._translationId = storageService.getTranslationId()
     this._updateAvailable = false
     this._swRegistration = null
     this._updateSW = registerSW({
@@ -205,6 +210,19 @@ export class AppShell extends LitElement {
     this._drawerOpen = false
   }
 
+  /**
+   * Switches the Bible being read. The search index was built from the old
+   * text, so it goes; the open page is rebuilt from scratch (see the keyed
+   * route below) because every view holds book text of one translation.
+   */
+  _changeTranslation(id) {
+    if (id === this._translationId) return
+    storageService.setTranslationId(id)
+    this._translationId = id
+    searchService.reset()
+    searchService.warmUp()
+  }
+
   _adjustFont(delta) {
     this._fontScale = Math.min(1.6, Math.max(0.8, this._fontScale + delta))
     storageService.setFontScale(this._fontScale)
@@ -244,7 +262,16 @@ export class AppShell extends LitElement {
           <nav-accordion label="Livros" expanded>
             <md-list>
               <md-list-item type="button" @click=${() => this._selectDrawerItem(navigateToBooks)}>
+                <md-icon slot="start">list</md-icon>
                 Listar livros
+              </md-list-item>
+            </md-list>
+          </nav-accordion>
+          <nav-accordion label="Bíblias">
+            <md-list>
+              <md-list-item type="button" @click=${() => this._selectDrawerItem(navigateToBibles)}>
+                <md-icon slot="start">menu_book</md-icon>
+                Listar Bíblicas
               </md-list-item>
             </md-list>
           </nav-accordion>
@@ -254,6 +281,7 @@ export class AppShell extends LitElement {
                 type="button"
                 @click=${() => this._selectDrawerItem(navigateToMarkedTexts)}
               >
+                <md-icon slot="start">bookmarks</md-icon>
                 Meus destaques
               </md-list-item>
             </md-list>
@@ -261,6 +289,7 @@ export class AppShell extends LitElement {
           <nav-accordion label="Sobre">
             <md-list>
               <md-list-item type="button" @click=${() => this._selectDrawerItem(navigateToPurpose)}>
+                <md-icon slot="start">info</md-icon>
                 Objetivo
               </md-list-item>
             </md-list>
@@ -268,6 +297,7 @@ export class AppShell extends LitElement {
           <nav-accordion label="Conta">
             <md-list>
               <md-list-item type="button" @click=${() => this._selectDrawerItem(navigateToAccount)}>
+                <md-icon slot="start">account_circle</md-icon>
                 Minha conta
               </md-list-item>
             </md-list>
@@ -275,7 +305,9 @@ export class AppShell extends LitElement {
         </div>
       </md-navigation-drawer-modal>
 
-      <main>${this._renderRoute()}</main>
+      <main @translation-change=${(e) => this._changeTranslation(e.detail.id)}>
+        ${keyed(this._translationId, this._renderRoute())}
+      </main>
 
       ${this._updateAvailable
         ? html`
@@ -307,6 +339,8 @@ export class AppShell extends LitElement {
         return html`<book-list-view></book-list-view>`
       case 'marked-texts':
         return html`<marked-texts-view></marked-texts-view>`
+      case 'bibles':
+        return html`<bibles-view></bibles-view>`
       case 'about-purpose':
         return html`<purpose-view></purpose-view>`
       case 'account':

@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit'
 import { bibleDataService } from '../services/bible-data-service.js'
-import { storageService, markGroupId } from '../services/storage-service.js'
+import { storageService, markGroupId, markTranslationId } from '../services/storage-service.js'
+import { translation } from '../translations.js'
 import { markColor } from '../mark-colors.js'
 import { navigateToChapter } from '../router.js'
 
@@ -57,6 +58,15 @@ export class MarkedTextsView extends LitElement {
       font-size: 0.8rem;
       color: var(--md-sys-color-on-surface-variant);
     }
+    h2 .translation {
+      text-transform: none;
+      letter-spacing: normal;
+      padding: 2px 8px;
+      margin-left: 4px;
+      border-radius: 10px;
+      background: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+    }
     .empty {
       color: var(--md-sys-color-on-surface-variant);
       line-height: 1.6;
@@ -84,13 +94,17 @@ export class MarkedTextsView extends LitElement {
     const names = new Map(this._books.map((b) => [b.id, b.name]))
     const groups = new Map()
     for (const mark of this._marks) {
-      const key = `${mark.book}:${mark.chapter}`
+      const translationId = markTranslationId(mark)
+      const key = `${translationId}:${mark.book}:${mark.chapter}`
       let group = groups.get(key)
       if (!group) {
         group = {
           key,
           order: order.get(mark.book) ?? Number.MAX_SAFE_INTEGER,
           title: `${names.get(mark.book) ?? mark.book} ${mark.chapter}`,
+          // Which Bible the excerpt was read in — the wording, and the offsets
+          // behind the highlight, belong to that translation alone.
+          translationName: translation(translationId).name,
           chapter: mark.chapter,
           highlights: new Map(),
         }
@@ -123,7 +137,12 @@ export class MarkedTextsView extends LitElement {
         (a, b) => a.verse - b.verse || a.pieces[0].startOffset - b.pieces[0].startOffset
       )
     }
-    return [...groups.values()].sort((a, b) => a.order - b.order || a.chapter - b.chapter)
+    return [...groups.values()].sort(
+      (a, b) =>
+        a.order - b.order ||
+        a.chapter - b.chapter ||
+        a.translationName.localeCompare(b.translationName)
+    )
   }
 
   _open(highlight) {
@@ -149,7 +168,7 @@ export class MarkedTextsView extends LitElement {
           </p>`
         : this._groups().map(
             (group) => html`
-              <h2>${group.title}</h2>
+              <h2>${group.title} <span class="translation">${group.translationName}</span></h2>
               ${group.highlights.map(
                 (highlight) => html`
                   <div

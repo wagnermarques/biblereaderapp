@@ -34,12 +34,30 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Precache the app shell + every book JSON (public/data/**) so the whole
-        // Bible works offline after the first visit. This makes the service worker
-        // download ~4 MB on install — expected for an offline-first Bible reader.
+        // Precache the app shell + every book JSON of the default translation
+        // (public/data/alm1911/**) so the whole Bible works offline after the
+        // first visit. This makes the service worker download ~4 MB on install —
+        // expected for an offline-first Bible reader.
         globPatterns: ['**/*.{js,css,html,svg,png,ico,json,webmanifest,woff2}'],
+        // Every other translation is roughly another 4 MB, which is a lot to
+        // push onto a phone for a text the reader may never open. They're cached
+        // on first read instead (see the /data/ rule below), so a Bible works
+        // offline once it has been read online — DEFAULT_TRANSLATION_ID in
+        // src/translations.js is the one that must stay precached here.
+        globIgnores: ['**/node_modules/**/*', 'data/!(alm1911)/**/*'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         runtimeCaching: [
+          {
+            // Book text of any non-default translation. It never changes once
+            // published, so first read wins and the cache is kept.
+            urlPattern: /\/data\/(?!alm1911\/)[^/]+\/.*\.json$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'bible-translations',
+              expiration: { maxEntries: 500, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
           {
             urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/,
             handler: 'CacheFirst',

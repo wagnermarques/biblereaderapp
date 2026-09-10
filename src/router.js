@@ -5,6 +5,7 @@
  *   #/sobre/objetivo        -> about/purpose page
  *   #/conta                 -> account/login page
  *   #/marcacoes             -> list of highlighted excerpts
+ *   #/biblias               -> the bundled translations, and which one to read
  *   #/:book                 -> chapter picker grid for that book
  *   #/:book/:chapter[?v=n]  -> reading view, optionally opened at one verse
  *   #/search?q=...          -> search results
@@ -43,6 +44,9 @@ function parseHash() {
   }
   if (segments[0] === 'marcacoes') {
     return { name: 'marked-texts' }
+  }
+  if (segments[0] === 'biblias') {
+    return { name: 'bibles' }
   }
   if (segments.length === 0) {
     return { name: 'home' }
@@ -109,4 +113,8 @@ export function navigateToAccount() {
 
 export function navigateToMarkedTexts() {
   location.hash = '#/marcacoes'
+}
+
+export function navigateToBibles() {
+  location.hash = '#/biblias'
 }

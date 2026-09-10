@@ -1,9 +1,12 @@
+import { DEFAULT_TRANSLATION_ID } from '../translations.js'
+
 const KEYS = {
   theme: 'bible:theme', // 'light' | 'dark' | 'system'
+  translation: 'bible:translation', // id of a translation in src/translations.js
   fontScale: 'bible:font-scale', // number, 1 = default
   lastRead: 'bible:last-read', // { book, chapter }
   bookmarks: 'bible:bookmarks', // [{ book, chapter, verse }]
-  markedTexts: 'bible:marked-texts', // [{ id, groupId, book, chapter, verse, startOffset, endOffset, color, text, createdAt }]
+  markedTexts: 'bible:marked-texts', // [{ id, groupId, translation, book, chapter, verse, startOffset, endOffset, color, text, createdAt }]
   readVerses: 'bible:read-verses', // [{ book, chapter, verse }]
   outbox: 'bible:outbox', // [{ id, op, payload, createdAt, failed?, lastError? }]
   lastSyncedAt: 'bible:last-synced-at', // ISO string of the last fully drained flush
@@ -84,6 +87,11 @@ const MAX_OUTBOX_ENTRIES = 5000
 // so they stand alone as a group of one.
 export const markGroupId = (mark) => mark.groupId ?? mark.id
 
+// Offsets are character positions inside one translation's wording, so a
+// highlight only means anything in the text it was made in. Highlights saved
+// before the app offered a choice were all made in the default translation.
+export const markTranslationId = (mark) => mark.translation ?? DEFAULT_TRANSLATION_ID
+
 const bookmarkKey = (b) => `${b.book}:${b.chapter}:${b.verse}`
 const verseKey = (v) => `${v.book}:${v.chapter}:${v.verse}`
 
@@ -106,6 +114,14 @@ export const storageService = {
   },
   setTheme(theme) {
     writeJSON(KEYS.theme, theme)
+  },
+
+  /** Which translation the reader is currently reading. */
+  getTranslationId() {
+    return readJSON(KEYS.translation, DEFAULT_TRANSLATION_ID)
+  },
+  setTranslationId(id) {
+    writeJSON(KEYS.translation, id)
   },
 
   getFontScale() {
@@ -142,9 +158,15 @@ export const storageService = {
   getMarkedTexts() {
     return getList(KEYS.markedTexts)
   },
-  /** Only the marks inside one chapter — what the reader needs to paint a page. */
-  getMarkedTextsForChapter(book, chapter) {
-    return this.getMarkedTexts().filter((m) => m.book === book && m.chapter === chapter)
+  /**
+   * The marks to paint on one chapter page: only those made in the translation
+   * being read, since offsets from another wording would land on the wrong
+   * words.
+   */
+  getMarkedTextsForChapter(book, chapter, translationId = this.getTranslationId()) {
+    return this.getMarkedTexts().filter(
+      (m) => m.book === book && m.chapter === chapter && markTranslationId(m) === translationId
+    )
   },
   /**
    * Persists one highlight as a record per verse it covers, all sharing a group
@@ -155,9 +177,11 @@ export const storageService = {
     const list = this.getMarkedTexts()
     const groupId = newId()
     const createdAt = new Date().toISOString()
+    const translation = this.getTranslationId()
     const marks = pieces.map(({ book, chapter, verse, startOffset, endOffset, color, text }) => ({
       id: newId(),
       groupId,
+      translation,
       book,
       chapter,
       verse,
