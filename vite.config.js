@@ -1,12 +1,41 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // Repo name on GitHub Pages — update if the repository is renamed.
 const REPO_NAME = 'biblereaderapp'
 
-export default defineConfig({
+// Injects the Google tag (gtag.js) into index.html when VITE_GA_MEASUREMENT_ID
+// is set. Left unset (local dev, forks), no analytics code ships at all.
+function googleAnalytics(measurementId) {
+  return {
+    name: 'google-analytics',
+    transformIndexHtml() {
+      if (!measurementId) return []
+      return [
+        {
+          tag: 'script',
+          attrs: { async: true, src: `https://www.googletagmanager.com/gtag/js?id=${measurementId}` },
+          injectTo: 'head-prepend',
+        },
+        {
+          tag: 'script',
+          children: `
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', ${JSON.stringify(measurementId)});
+`,
+          injectTo: 'head-prepend',
+        },
+      ]
+    },
+  }
+}
+
+export default defineConfig(({ mode }) => ({
   base: `/${REPO_NAME}/`,
   plugins: [
+    googleAnalytics(loadEnv(mode, process.cwd(), 'VITE_').VITE_GA_MEASUREMENT_ID),
     VitePWA({
       registerType: 'prompt',
       injectRegister: null,
@@ -70,4 +99,4 @@ export default defineConfig({
       },
     }),
   ],
-})
+}))

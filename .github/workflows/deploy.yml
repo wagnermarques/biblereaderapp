@@ -32,6 +32,8 @@ jobs:
           # "Variables" tab (Settings > Secrets and variables > Actions).
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          # Google Analytics measurement ID (G-XXXXXXXXXX), also a public value.
+          VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
