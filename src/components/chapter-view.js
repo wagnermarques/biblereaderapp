@@ -1,9 +1,19 @@
 import { LitElement, html, css } from 'lit'
 import { bibleDataService } from '../services/bible-data-service.js'
-import { storageService, markGroupId } from '../services/storage-service.js'
+import { storageService, markGroupId, getTodayDateString } from '../services/storage-service.js'
 import { syncService } from '../services/sync-service.js'
 import { navigateToChapter } from '../router.js'
 import { MARK_COLORS, MARK_TEXT_COLOR, markColor } from '../mark-colors.js'
+
+const QUICK_CULT_TITLES = [
+  'Culto de Domingo',
+  'Culto da Família',
+  'Culto de Ensino',
+  'Culto de Doutrina',
+  'Culto de Jovens',
+  'Culto de Oração',
+  'Estudo Bíblico',
+]
 
 // How long a verse must stay mostly on screen before it auto-marks as read —
 // avoids marking every verse read from a quick scroll-past.
@@ -112,6 +122,11 @@ export class ChapterView extends LitElement {
     _error: { state: true },
     _sel: { state: true },
     _editing: { state: true },
+    _verseOptions: { state: true },
+    _newTodaySermonPrompt: { state: true },
+    _pickSermonDialogOpen: { state: true },
+    _cultTitleInput: { state: true },
+    _toastMessage: { state: true },
   }
 
   static styles = css`
@@ -230,6 +245,49 @@ export class ChapterView extends LitElement {
       justify-content: space-between;
       margin-top: 32px;
     }
+    .chips-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 10px 0;
+    }
+    .chip {
+      background: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+      border: 1px solid var(--md-sys-color-outline-variant, #ccc);
+      border-radius: 16px;
+      padding: 4px 10px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .chip:hover {
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%);
+      background: var(--md-sys-color-inverse-surface, #313033);
+      color: var(--md-sys-color-inverse-on-surface, #f4eff4);
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      z-index: 100;
+      animation: fadein 0.2s;
+    }
+    @keyframes fadein {
+      from {
+        opacity: 0;
+        transform: translate(-50%, 8px);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+    }
   `
 
   constructor() {
@@ -237,6 +295,13 @@ export class ChapterView extends LitElement {
     this.fontScale = 1
     this._sel = null
     this._editing = null
+    this._verseOptions = null
+    this._newTodaySermonPrompt = false
+    this._pickSermonDialogOpen = false
+    this._cultTitleInput = ''
+    this._pendingVerseForToday = null
+    this._toastMessage = null
+    this._suppressClick = false
     // Android hands a long-press to its own selection UI and dispatches
     // touchcancel rather than touchend, so a touch-event trigger never fires
     // for the very gesture that selects text. selectionchange is the signal
@@ -353,6 +418,197 @@ export class ChapterView extends LitElement {
       chapter: this.chapter,
       verse: verseNum,
     })
+  }
+
+  _onVerseClick(verseNum) {
+    if (this._suppressClick) {
+      this._suppressClick = false
+      return
+    }
+    this._toggleBookmark(verseNum)
+  }
+
+  _onVerseTouchStart(e, verseNum, text) {
+    const touch = e.touches[0]
+    this._touchStartX = touch.clientX
+    this._touchStartY = touch.clientY
+    this._suppressClick = false
+    clearTimeout(this._longPressTimer)
+    this._longPressTimer = setTimeout(() => {
+      this._suppressClick = true
+      if (navigator.vibrate) navigator.vibrate(40)
+      this._openVerseOptionsDialog({ verseNum, text })
+    }, 480)
+  }
+
+  _onVerseTouchMove(e) {
+    if (this._touchStartX === null || this._touchStartX === undefined) return
+    const touch = e.touches[0]
+    const dist = Math.hypot(touch.clientX - this._touchStartX, touch.clientY - this._touchStartY)
+    if (dist > 10) {
+      clearTimeout(this._longPressTimer)
+    }
+  }
+
+  _onVerseTouchEnd() {
+    clearTimeout(this._longPressTimer)
+    this._touchStartX = null
+    this._touchStartY = null
+  }
+
+  _onVerseMouseDown(e, verseNum, text) {
+    if (e.button !== 0) return
+    this._mouseStartX = e.clientX
+    this._mouseStartY = e.clientY
+    clearTimeout(this._longPressTimer)
+    this._longPressTimer = setTimeout(() => {
+      this._suppressClick = true
+      this._openVerseOptionsDialog({ verseNum, text })
+    }, 500)
+  }
+
+  _onVerseMouseMove(e) {
+    if (this._mouseStartX === null || this._mouseStartX === undefined) return
+    const dist = Math.hypot(e.clientX - this._mouseStartX, e.clientY - this._mouseStartY)
+    if (dist > 8) {
+      clearTimeout(this._longPressTimer)
+    }
+  }
+
+  _onVerseMouseUp() {
+    clearTimeout(this._longPressTimer)
+    this._mouseStartX = null
+    this._mouseStartY = null
+  }
+
+  _onVerseContextMenu(e, verseNum, text) {
+    e.preventDefault()
+    this._suppressClick = true
+    this._openVerseOptionsDialog({ verseNum, text })
+  }
+
+  _openVerseOptionsDialog({ verseNum, verseEnd = null, text }) {
+    this._verseOptions = { verseNum, verseEnd, text }
+  }
+
+  _closeVerseOptionsDialog() {
+    this._verseOptions = null
+  }
+
+  _addCurrentVerseToTodaySermon() {
+    if (!this._verseOptions) return
+    const todaySermons = storageService.getTodaySermons()
+    if (todaySermons.length > 0) {
+      const sermon = todaySermons[0]
+      storageService.addVerseToSermon(sermon.id, {
+        book: this.bookId,
+        bookName: this._bookMeta?.name || this.bookId,
+        chapter: this.chapter,
+        verse: this._verseOptions.verseNum,
+        verseEnd: this._verseOptions.verseEnd,
+        text: this._verseOptions.text,
+      })
+      const ref = this._verseOptions.verseEnd
+        ? `${this._bookMeta?.name} ${this.chapter}:${this._verseOptions.verseNum}-${this._verseOptions.verseEnd}`
+        : `${this._bookMeta?.name} ${this.chapter}:${this._verseOptions.verseNum}`
+      this._showToast(`${ref} adicionado à pregação: ${sermon.title}`)
+      this._verseOptions = null
+    } else {
+      this._cultTitleInput = 'Culto de Domingo'
+      this._pendingVerseForToday = { ...this._verseOptions }
+      this._verseOptions = null
+      this._newTodaySermonPrompt = true
+    }
+  }
+
+  _createTodaySermonWithPendingVerse() {
+    if (!this._pendingVerseForToday) return
+    const cult = this._cultTitleInput.trim() || 'Culto'
+    const sermon = storageService.createSermon({
+      cultTitle: cult,
+      date: getTodayDateString(),
+    })
+    storageService.addVerseToSermon(sermon.id, {
+      book: this.bookId,
+      bookName: this._bookMeta?.name || this.bookId,
+      chapter: this.chapter,
+      verse: this._pendingVerseForToday.verseNum,
+      verseEnd: this._pendingVerseForToday.verseEnd,
+      text: this._pendingVerseForToday.text,
+    })
+    this._newTodaySermonPrompt = false
+    this._pendingVerseForToday = null
+    this._showToast('Pregação de hoje criada e versículo adicionado!')
+  }
+
+  _openPickSermonDialog() {
+    this._pickSermonDialogOpen = true
+  }
+
+  _addVerseToSpecificSermon(sermon) {
+    if (!this._verseOptions) return
+    storageService.addVerseToSermon(sermon.id, {
+      book: this.bookId,
+      bookName: this._bookMeta?.name || this.bookId,
+      chapter: this.chapter,
+      verse: this._verseOptions.verseNum,
+      verseEnd: this._verseOptions.verseEnd,
+      text: this._verseOptions.text,
+    })
+    const ref = this._verseOptions.verseEnd
+      ? `${this._bookMeta?.name} ${this.chapter}:${this._verseOptions.verseNum}-${this._verseOptions.verseEnd}`
+      : `${this._bookMeta?.name} ${this.chapter}:${this._verseOptions.verseNum}`
+    this._showToast(`${ref} adicionado a: ${sermon.title}`)
+    this._pickSermonDialogOpen = false
+    this._verseOptions = null
+  }
+
+  _copyCurrentVerse() {
+    if (!this._verseOptions) return
+    const ref = this._verseOptions.verseEnd
+      ? `${this._bookMeta?.name} ${this.chapter}:${this._verseOptions.verseNum}-${this._verseOptions.verseEnd}`
+      : `${this._bookMeta?.name} ${this.chapter}:${this._verseOptions.verseNum}`
+    const content = `"${this._verseOptions.text}" (${ref})`
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(content).then(() => {
+        this._showToast('Versículo copiado!')
+      })
+    } else {
+      this._showToast('Não foi possível copiar.')
+    }
+    this._verseOptions = null
+  }
+
+  _toggleCurrentVerseBookmark() {
+    if (!this._verseOptions) return
+    const v = this._verseOptions.verseNum
+    this._verseOptions = null
+    this._toggleBookmark(v)
+  }
+
+  _showToast(msg) {
+    this._toastMessage = msg
+    clearTimeout(this._toastTimer)
+    this._toastTimer = setTimeout(() => {
+      this._toastMessage = null
+      this.requestUpdate()
+    }, 2800)
+    this.requestUpdate()
+  }
+
+  _addSelectionToSermon() {
+    const pieces = this._selection() ?? this._sel
+    if (!pieces || !pieces.length) return
+    const first = pieces[0]
+    const last = pieces[pieces.length - 1]
+    const fullText = pieces.map((p) => p.text).join(' ')
+    this._openVerseOptionsDialog({
+      verseNum: first.verse,
+      verseEnd: first.verse !== last.verse ? last.verse : null,
+      text: fullText,
+    })
+    this._clearSelection()
+    this._sel = null
   }
 
   _toggleBookmark(verseNum) {
@@ -561,6 +817,15 @@ export class ChapterView extends LitElement {
               <md-icon>delete</md-icon>
             </md-icon-button>`
           : ''}
+        ${this._sel
+          ? html`<md-icon-button
+              aria-label="Adicionar seleção à pregação"
+              title="Adicionar à pregação de hoje"
+              @click=${this._addSelectionToSermon}
+            >
+              <md-icon>record_voice_over</md-icon>
+            </md-icon-button>`
+          : ''}
       </div>
     `
   }
@@ -608,8 +873,16 @@ export class ChapterView extends LitElement {
                 data-verse=${verseNum}
                 ?data-bookmarked=${bookmarked}
                 ?data-read=${read}
-                title="Toque para marcar/desmarcar favorito; selecione um trecho para destacá-lo"
-                @click=${() => this._toggleBookmark(verseNum)}
+                title="Toque para favoritar; pressione para opções da pregação"
+                @click=${() => this._onVerseClick(verseNum)}
+                @touchstart=${(e) => this._onVerseTouchStart(e, verseNum, text)}
+                @touchmove=${this._onVerseTouchMove}
+                @touchend=${this._onVerseTouchEnd}
+                @touchcancel=${this._onVerseTouchEnd}
+                @mousedown=${(e) => this._onVerseMouseDown(e, verseNum, text)}
+                @mousemove=${this._onVerseMouseMove}
+                @mouseup=${this._onVerseMouseUp}
+                @contextmenu=${(e) => this._onVerseContextMenu(e, verseNum, text)}
               >
                 <span
                   class="verse-num"
@@ -625,6 +898,10 @@ export class ChapterView extends LitElement {
         })()}
       </div>
       ${this._renderMarkBar()}
+      ${this._renderVerseOptionsDialog()}
+      ${this._renderTodaySermonPromptDialog()}
+      ${this._renderPickSermonDialog()}
+      ${this._toastMessage ? html`<div class="toast">${this._toastMessage}</div>` : ''}
       <nav class="chapter-nav">
         <md-text-button ?disabled=${this.chapter <= 1} @click=${() => this._goToChapter(-1)}>
           ← Capítulo anterior
@@ -636,6 +913,124 @@ export class ChapterView extends LitElement {
           Próximo capítulo →
         </md-text-button>
       </nav>
+    `
+  }
+
+  _renderVerseOptionsDialog() {
+    if (!this._verseOptions) return ''
+    const todaySermons = storageService.getTodaySermons()
+    const ref = this._verseOptions.verseEnd
+      ? `${this._bookMeta?.name} ${this.chapter}:${this._verseOptions.verseNum}-${this._verseOptions.verseEnd}`
+      : `${this._bookMeta?.name} ${this.chapter}:${this._verseOptions.verseNum}`
+
+    return html`
+      <md-dialog open @closed=${this._closeVerseOptionsDialog}>
+        <div slot="headline">${ref}</div>
+        <div slot="content" style="max-height:65vh;overflow-y:auto;">
+          <p style="font-size:0.95rem;font-style:italic;margin:0 0 16px;color:var(--md-sys-color-on-surface-variant);line-height:1.5;">
+            “${this._verseOptions.text}”
+          </p>
+          <md-list style="margin:0 -24px;">
+            <md-list-item type="button" @click=${this._addCurrentVerseToTodaySermon}>
+              <md-icon slot="start">record_voice_over</md-icon>
+              <div slot="headline">Adicionar à pregação de hoje</div>
+              <div slot="supporting-text">
+                ${todaySermons.length > 0
+                  ? `Vincular a: ${todaySermons[0].title}`
+                  : 'Criar pregação de hoje e vincular versículo'}
+              </div>
+            </md-list-item>
+            <md-list-item type="button" @click=${this._openPickSermonDialog}>
+              <md-icon slot="start">playlist_add</md-icon>
+              <div slot="headline">Adicionar a outra pregação...</div>
+              <div slot="supporting-text">Escolher pregação da lista</div>
+            </md-list-item>
+            <md-list-item type="button" @click=${this._copyCurrentVerse}>
+              <md-icon slot="start">content_copy</md-icon>
+              <div slot="headline">Copiar versículo</div>
+              <div slot="supporting-text">Copiar referência e texto</div>
+            </md-list-item>
+            <md-list-item type="button" @click=${this._toggleCurrentVerseBookmark}>
+              <md-icon slot="start">bookmark</md-icon>
+              <div slot="headline">Favoritar versículo</div>
+            </md-list-item>
+          </md-list>
+        </div>
+        <div slot="actions">
+          <md-text-button @click=${this._closeVerseOptionsDialog}>Fechar</md-text-button>
+        </div>
+      </md-dialog>
+    `
+  }
+
+  _renderTodaySermonPromptDialog() {
+    if (!this._newTodaySermonPrompt) return ''
+    return html`
+      <md-dialog open @closed=${() => (this._newTodaySermonPrompt = false)}>
+        <div slot="headline">Pregação de Hoje</div>
+        <form slot="content" id="today-sermon-form" method="dialog" style="display:flex;flex-direction:column;gap:12px;min-width:280px;">
+          <p style="margin:0;font-size:0.9rem;color:var(--md-sys-color-on-surface-variant);">
+            Ainda não há pregação registrada para hoje. Informe o título do culto:
+          </p>
+          <md-outlined-text-field
+            label="Título do Culto / Mensagem"
+            placeholder="Ex: Culto da Família, Culto de Ensino..."
+            .value=${this._cultTitleInput}
+            @input=${(e) => (this._cultTitleInput = e.target.value)}
+          ></md-outlined-text-field>
+
+          <div style="font-size:0.8rem;color:var(--md-sys-color-on-surface-variant);">
+            Sugestões rápidas:
+          </div>
+          <div class="chips-row">
+            ${QUICK_CULT_TITLES.map(
+              (title) => html`
+                <button
+                  type="button"
+                  class="chip"
+                  @click=${() => (this._cultTitleInput = title)}
+                >
+                  ${title}
+                </button>
+              `
+            )}
+          </div>
+        </form>
+        <div slot="actions">
+          <md-text-button @click=${() => (this._newTodaySermonPrompt = false)}>Cancelar</md-text-button>
+          <md-filled-button @click=${this._createTodaySermonWithPendingVerse}>Criar e Adicionar</md-filled-button>
+        </div>
+      </md-dialog>
+    `
+  }
+
+  _renderPickSermonDialog() {
+    if (!this._pickSermonDialogOpen) return ''
+    const sermons = storageService.getSermons()
+    return html`
+      <md-dialog open @closed=${() => (this._pickSermonDialogOpen = false)}>
+        <div slot="headline">Selecionar Pregação</div>
+        <div slot="content" style="max-height:60vh;overflow-y:auto;">
+          ${sermons.length === 0
+            ? html`<p style="color:var(--md-sys-color-on-surface-variant)">Nenhuma pregação cadastrada ainda.</p>`
+            : html`
+                <md-list style="margin:0 -24px;">
+                  ${sermons.map(
+                    (s) => html`
+                      <md-list-item type="button" @click=${() => this._addVerseToSpecificSermon(s)}>
+                        <md-icon slot="start">record_voice_over</md-icon>
+                        <div slot="headline">${s.title}</div>
+                        <div slot="supporting-text">${s.verses?.length || 0} versículos</div>
+                      </md-list-item>
+                    `
+                  )}
+                </md-list>
+              `}
+        </div>
+        <div slot="actions">
+          <md-text-button @click=${() => (this._pickSermonDialogOpen = false)}>Cancelar</md-text-button>
+        </div>
+      </md-dialog>
     `
   }
 }

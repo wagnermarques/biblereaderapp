@@ -48,6 +48,9 @@ function parseHash() {
   if (segments[0] === 'biblias') {
     return { name: 'bibles' }
   }
+  if (segments[0] === 'pregacoes') {
+    return { name: 'sermons', id: segments[1] ?? null }
+  }
   if (segments.length === 0) {
     return { name: 'home' }
   }
@@ -118,3 +121,8 @@ export function navigateToMarkedTexts() {
 export function navigateToBibles() {
   location.hash = '#/biblias'
 }
+
+export function navigateToSermons(id = null) {
+  location.hash = id ? `#/pregacoes/${id}` : '#/pregacoes'
+}
+

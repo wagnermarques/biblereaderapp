@@ -7,6 +7,7 @@ import './search-view.js'
 import './book-list-view.js'
 import './purpose-view.js'
 import './marked-texts-view.js'
+import './sermons-view.js'
 import './bibles-view.js'
 import './account-view.js'
 import './nav-accordion.js'
@@ -20,6 +21,7 @@ import {
   navigateToAccount,
   navigateToMarkedTexts,
   navigateToBibles,
+  navigateToSermons,
 } from '../router.js'
 import { storageService } from '../services/storage-service.js'
 import { searchService } from '../services/search-service.js'
@@ -286,6 +288,17 @@ export class AppShell extends LitElement {
               </md-list-item>
             </md-list>
           </nav-accordion>
+          <nav-accordion label="Pregações">
+            <md-list>
+              <md-list-item
+                type="button"
+                @click=${() => this._selectDrawerItem(navigateToSermons)}
+              >
+                <md-icon slot="start">record_voice_over</md-icon>
+                Pregações
+              </md-list-item>
+            </md-list>
+          </nav-accordion>
           <nav-accordion label="Sobre">
             <md-list>
               <md-list-item type="button" @click=${() => this._selectDrawerItem(navigateToPurpose)}>
@@ -339,6 +352,8 @@ export class AppShell extends LitElement {
         return html`<book-list-view></book-list-view>`
       case 'marked-texts':
         return html`<marked-texts-view></marked-texts-view>`
+      case 'sermons':
+        return html`<sermons-view sermon-id=${this._route.id ?? ''}></sermons-view>`
       case 'bibles':
         return html`<bibles-view></bibles-view>`
       case 'about-purpose':

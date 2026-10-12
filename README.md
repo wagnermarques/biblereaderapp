@@ -82,7 +82,8 @@ npm run preview   # pré-visualiza o build de produção
 ```
 src/
   components/     # <app-shell>, <bible-nav>, <chapter-view>, <search-view>,
-                  # <book-list-view>, <purpose-view>, <account-view>, <nav-accordion>
+                  # <book-list-view>, <purpose-view>, <account-view>, <nav-accordion>,
+                  # <marked-texts-view>, <sermons-view>
   services/       # bible-data-service, search-service, storage-service,
                   # supabase-client, auth-service, sync-service
   styles/         # tokens de cor Material 3 (tema claro/escuro)
@@ -105,6 +106,8 @@ supabase/
 - Leitura por capítulo com navegação anterior/próximo
 - Busca em texto completo (ignora acentos)
 - Favoritos de versículos (clique no versículo)
+- Destaques coloridos de trechos e versículos com listagem de marcações
+- Pregações: registro de pregações organizadas por data (`dd/mm/aa - dia da semana - título do culto`), vinculação de versículos selecionados via toque longo (no leitor e na busca), anotações com salvamento automático e cópia/compartilhamento
 - Escolha da tradução em "Bíblias → Listar Bíblicas", com licença e link oficial de cada uma
 - Tema claro/escuro/sistema
 - Ajuste de tamanho de fonte

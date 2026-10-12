@@ -8,6 +8,7 @@ const KEYS = {
   bookmarks: 'bible:bookmarks', // [{ book, chapter, verse }]
   markedTexts: 'bible:marked-texts', // [{ id, groupId, translation, book, chapter, verse, startOffset, endOffset, color, text, createdAt }]
   readVerses: 'bible:read-verses', // [{ book, chapter, verse }]
+  sermons: 'bible:sermons', // [{ id, date, weekday, cultTitle, title, remarks, verses, createdAt, updatedAt }]
   outbox: 'bible:outbox', // [{ id, op, payload, createdAt, failed?, lastError? }]
   lastSyncedAt: 'bible:last-synced-at', // ISO string of the last fully drained flush
 }
@@ -277,4 +278,135 @@ export const storageService = {
   setLastSyncedAt(iso) {
     writeJSON(KEYS.lastSyncedAt, iso)
   },
+
+  /** Sermons management */
+  getSermons() {
+    return readJSON(KEYS.sermons, []).sort(
+      (a, b) =>
+        (b.date || '').localeCompare(a.date || '') ||
+        (b.createdAt || '').localeCompare(a.createdAt || '')
+    )
+  },
+  getSermonById(id) {
+    return this.getSermons().find((s) => s.id === id) ?? null
+  },
+  getTodaySermons() {
+    const today = getTodayDateString()
+    return this.getSermons().filter((s) => s.date === today)
+  },
+  createSermon({ cultTitle, date = getTodayDateString(), remarks = '', verses = [] }) {
+    const id = newId()
+    const now = new Date().toISOString()
+    const weekday = formatWeekday(date)
+    const title = formatSermonTitle(date, cultTitle)
+    const sermon = {
+      id,
+      date,
+      weekday,
+      cultTitle: (cultTitle || '').trim(),
+      title,
+      remarks: remarks || '',
+      verses: verses || [],
+      createdAt: now,
+      updatedAt: now,
+    }
+    const list = this.getSermons()
+    list.unshift(sermon)
+    writeJSON(KEYS.sermons, list)
+    return sermon
+  },
+  updateSermon(id, updates) {
+    const list = this.getSermons()
+    const idx = list.findIndex((s) => s.id === id)
+    if (idx === -1) return null
+    const sermon = list[idx]
+    let date = sermon.date
+    let cultTitle = sermon.cultTitle
+    if (updates.date !== undefined || updates.cultTitle !== undefined) {
+      date = updates.date ?? sermon.date
+      cultTitle = updates.cultTitle ?? sermon.cultTitle
+      updates.date = date
+      updates.weekday = formatWeekday(date)
+      updates.cultTitle = (cultTitle || '').trim()
+      updates.title = formatSermonTitle(date, cultTitle)
+    }
+    const updated = {
+      ...sermon,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    }
+    list[idx] = updated
+    writeJSON(KEYS.sermons, list)
+    return updated
+  },
+  deleteSermon(id) {
+    const list = this.getSermons().filter((s) => s.id !== id)
+    writeJSON(KEYS.sermons, list)
+    return true
+  },
+  addVerseToSermon(sermonId, verseData) {
+    const list = this.getSermons()
+    const sermon = list.find((s) => s.id === sermonId)
+    if (!sermon) return null
+    const verseEntry = {
+      id: newId(),
+      book: verseData.book,
+      bookName: verseData.bookName,
+      chapter: verseData.chapter,
+      verse: verseData.verse,
+      verseEnd: verseData.verseEnd ?? null,
+      text: verseData.text,
+      addedAt: new Date().toISOString(),
+    }
+    sermon.verses = sermon.verses || []
+    sermon.verses.push(verseEntry)
+    sermon.updatedAt = new Date().toISOString()
+    writeJSON(KEYS.sermons, list)
+    return { sermon, verse: verseEntry }
+  },
+  removeVerseFromSermon(sermonId, verseId) {
+    const list = this.getSermons()
+    const sermon = list.find((s) => s.id === sermonId)
+    if (!sermon) return null
+    sermon.verses = (sermon.verses || []).filter((v) => v.id !== verseId)
+    sermon.updatedAt = new Date().toISOString()
+    writeJSON(KEYS.sermons, list)
+    return sermon
+  },
 }
+
+export function formatDateShort(date) {
+  const d =
+    typeof date === 'string'
+      ? new Date(date.includes('T') ? date : `${date}T12:00:00`)
+      : date
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const year = String(d.getFullYear()).slice(-2)
+  return `${day}/${month}/${year}`
+}
+
+export function formatWeekday(date) {
+  const d =
+    typeof date === 'string'
+      ? new Date(date.includes('T') ? date : `${date}T12:00:00`)
+      : date
+  const name = new Intl.DateTimeFormat('pt-BR', { weekday: 'long' }).format(d)
+  return name.charAt(0).toUpperCase() + name.slice(1)
+}
+
+export function formatSermonTitle(date, cultTitle) {
+  const shortDate = formatDateShort(date)
+  const weekday = formatWeekday(date)
+  const title = (cultTitle || '').trim() || 'Culto'
+  return `${shortDate} - ${weekday} - ${title}`
+}
+
+export function getTodayDateString() {
+  const d = new Date()
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
