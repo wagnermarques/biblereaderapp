@@ -13,7 +13,8 @@ const UNTAGGED = Symbol('untagged')
  * Every excerpt the reader has highlighted, in bible order rather than by date:
  * highlights are looked up by where they are, and grouping them under their
  * book and chapter is how the reader already thinks about them. Tags cut across
- * that order, so they work as a filter on top of it.
+ * that order, so they work either as a filter on top of it or, when the reader
+ * switches the grouping, as the sections themselves.
  */
 export class MarkedTextsView extends LitElement {
   static properties = {
@@ -24,6 +25,8 @@ export class MarkedTextsView extends LitElement {
     _expanded: { state: true },
     _tagging: { state: true },
     _tagInput: { state: true },
+    _grouping: { state: true },
+    _collapsed: { state: true },
   }
 
   static styles = css`
@@ -129,6 +132,36 @@ export class MarkedTextsView extends LitElement {
     .filters {
       margin: 0 0 8px;
     }
+    .grouping {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0 0 12px;
+      font-size: 0.85rem;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    h2 .section {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      width: 100%;
+      background: none;
+      border: none;
+      padding: 0;
+      font: inherit;
+      letter-spacing: inherit;
+      text-transform: inherit;
+      color: inherit;
+      cursor: pointer;
+      text-align: left;
+    }
+    h2 .section md-icon {
+      font-size: 20px;
+      --md-icon-size: 20px;
+    }
+    h2 .count {
+      opacity: 0.7;
+    }
     .chip {
       display: inline-flex;
       align-items: center;
@@ -181,6 +214,9 @@ export class MarkedTextsView extends LitElement {
     this._expanded = new Set()
     this._tagging = null
     this._tagInput = ''
+    this._grouping = storageService.getHighlightGrouping()
+    // Tag sections the reader folded away, by lowercased tag name.
+    this._collapsed = new Set()
     // Full chapter text for expanded highlights, keyed by translation:book:chapter.
     this._chapters = new Map()
   }
@@ -197,7 +233,7 @@ export class MarkedTextsView extends LitElement {
   }
 
   _matchesFilter(highlight) {
-    if (this._filter === null) return true
+    if (this._filter === null || this._grouping === 'tag') return true
     const tags = this._tagsOf(highlight.id)
     if (this._filter === UNTAGGED) return tags.length === 0
     return tags.some((t) => t.toLocaleLowerCase() === this._filter)
@@ -252,6 +288,10 @@ export class MarkedTextsView extends LitElement {
           first.verse === last.verse
             ? `Versículo ${first.verse}`
             : `Versículos ${first.verse}-${last.verse}`
+        // Under a tag heading there's no book heading to say where it's from.
+        highlight.fullRef = `${group.title}:${
+          first.verse === last.verse ? first.verse : `${first.verse}-${last.verse}`
+        } · ${group.translationName}`
       }
       group.highlights.sort(
         (a, b) => a.verse - b.verse || a.pieces[0].startOffset - b.pieces[0].startOffset
@@ -263,6 +303,41 @@ export class MarkedTextsView extends LitElement {
         a.chapter - b.chapter ||
         a.translationName.localeCompare(b.translationName)
     )
+  }
+
+  /**
+   * Highlights sectioned by tag, tags alphabetically and highlights in bible
+   * order inside each. A highlight with several tags sits under each of them,
+   * and the untagged ones close the list.
+   */
+  _tagSections(groups) {
+    const sections = new Map(
+      this._tagNames().map((t) => {
+        const key = t.toLocaleLowerCase()
+        return [key, { key, name: t, highlights: [] }]
+      })
+    )
+    const untagged = { key: '', name: 'Sem tag', highlights: [] }
+    for (const group of groups) {
+      for (const highlight of group.highlights) {
+        const tags = this._tagsOf(highlight.id)
+        if (!tags.length) untagged.highlights.push(highlight)
+        for (const t of tags) sections.get(t.toLocaleLowerCase())?.highlights.push(highlight)
+      }
+    }
+    return [...sections.values(), untagged].filter((section) => section.highlights.length)
+  }
+
+  _setGrouping(grouping) {
+    this._grouping = grouping
+    storageService.setHighlightGrouping(grouping)
+  }
+
+  _toggleSection(key) {
+    const collapsed = new Set(this._collapsed)
+    if (collapsed.has(key)) collapsed.delete(key)
+    else collapsed.add(key)
+    this._collapsed = collapsed
   }
 
   _open(highlight) {
@@ -280,13 +355,13 @@ export class MarkedTextsView extends LitElement {
     return `${highlight.translationId}:${highlight.book}:${highlight.chapter}`
   }
 
-  _toggleExpanded(event, highlight) {
+  _toggleExpanded(event, highlight, expandKey) {
     event.stopPropagation()
     const expanded = new Set(this._expanded)
-    if (expanded.has(highlight.id)) {
-      expanded.delete(highlight.id)
+    if (expanded.has(expandKey)) {
+      expanded.delete(expandKey)
     } else {
-      expanded.add(highlight.id)
+      expanded.add(expandKey)
       const key = this._chapterKey(highlight)
       if (!this._chapters.has(key)) {
         // Read in the highlight's own translation, so the offsets line up with
@@ -338,9 +413,8 @@ export class MarkedTextsView extends LitElement {
     this._tags = storageService.getAllHighlightTags()
     // A filter on a tag nobody uses any more would leave an empty list with no
     // chip left to switch it off.
-    if (typeof this._filter === 'string' && !this._tagNames().some((t) => t.toLocaleLowerCase() === this._filter)) {
-      this._filter = null
-    }
+    const stillUsed = this._tagNames().some((t) => t.toLocaleLowerCase() === this._filter)
+    if (typeof this._filter === 'string' && !stillUsed) this._filter = null
   }
 
   _addTag(name) {
@@ -457,8 +531,13 @@ export class MarkedTextsView extends LitElement {
     `
   }
 
-  _renderHighlight(highlight) {
-    const expanded = this._expanded.has(highlight.id)
+  /**
+   * `section` is the tag heading the highlight is listed under, if any: the
+   * same highlight can appear under several, and each copy expands on its own.
+   */
+  _renderHighlight(highlight, section = null) {
+    const expandKey = section === null ? highlight.id : `${section}:${highlight.id}`
+    const expanded = this._expanded.has(expandKey)
     return html`
       <div
         class="mark"
@@ -472,12 +551,12 @@ export class MarkedTextsView extends LitElement {
         <div class="body">
           <p class="excerpt">“${highlight.text}”</p>
           <div class="ref-row">
-            <span class="ref">${highlight.ref}</span>
+            <span class="ref">${section === null ? highlight.ref : highlight.fullRef}</span>
             <button
               type="button"
               class="toggle"
               aria-expanded=${expanded ? 'true' : 'false'}
-              @click=${(e) => this._toggleExpanded(e, highlight)}
+              @click=${(e) => this._toggleExpanded(e, highlight, expandKey)}
             >
               <md-icon>${expanded ? 'expand_less' : 'expand_more'}</md-icon>
               ${expanded ? 'Ocultar versículo' : 'Ver versículo'}
@@ -514,11 +593,37 @@ export class MarkedTextsView extends LitElement {
       `
     }
     const groups = this._groups()
+    return html`
+      <h1>Meus destaques</h1>
+      ${this._renderGroupingToggle()}
+      ${this._grouping === 'tag' ? this._renderByTag(groups) : this._renderByBook(groups)}
+      ${this._renderTagDialog()}
+    `
+  }
+
+  _renderGroupingToggle() {
+    const option = (label, value) => html`
+      <button
+        type="button"
+        class="chip"
+        aria-pressed=${this._grouping === value ? 'true' : 'false'}
+        @click=${() => this._setGrouping(value)}
+      >
+        ${label}
+      </button>
+    `
+    return html`
+      <div class="grouping" role="group" aria-label="Agrupar por">
+        Agrupar por: ${option('Livro', 'book')} ${option('Tag', 'tag')}
+      </div>
+    `
+  }
+
+  _renderByBook(groups) {
     const visible = groups
       .map((group) => ({ ...group, highlights: group.highlights.filter((h) => this._matchesFilter(h)) }))
       .filter((group) => group.highlights.length)
     return html`
-      <h1>Meus destaques</h1>
       ${this._renderFilters(groups.flatMap((g) => g.highlights))}
       ${visible.map(
         (group) => html`
@@ -526,8 +631,27 @@ export class MarkedTextsView extends LitElement {
           ${group.highlights.map((highlight) => this._renderHighlight(highlight))}
         `
       )}
-      ${this._renderTagDialog()}
     `
+  }
+
+  _renderByTag(groups) {
+    return this._tagSections(groups).map((section) => {
+      const open = !this._collapsed.has(section.key)
+      return html`
+        <h2>
+          <button
+            type="button"
+            class="section"
+            aria-expanded=${open ? 'true' : 'false'}
+            @click=${() => this._toggleSection(section.key)}
+          >
+            <md-icon>${open ? 'expand_more' : 'chevron_right'}</md-icon>
+            ${section.name} <span class="count">(${section.highlights.length})</span>
+          </button>
+        </h2>
+        ${open ? section.highlights.map((highlight) => this._renderHighlight(highlight, section.key)) : ''}
+      `
+    })
   }
 }
 

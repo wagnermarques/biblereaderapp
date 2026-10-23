@@ -8,6 +8,7 @@ const KEYS = {
   bookmarks: 'bible:bookmarks', // [{ book, chapter, verse }]
   markedTexts: 'bible:marked-texts', // [{ id, groupId, translation, book, chapter, verse, startOffset, endOffset, color, text, createdAt }]
   highlightTags: 'bible:highlight-tags', // { [groupId]: ['tag', ...] }
+  highlightGrouping: 'bible:highlight-grouping', // 'book' | 'tag'
   readVerses: 'bible:read-verses', // [{ book, chapter, verse }]
   sermons: 'bible:sermons', // [{ id, date, weekday, cultTitle, title, remarks, verses, createdAt, updatedAt }]
   outbox: 'bible:outbox', // [{ id, op, payload, createdAt, failed?, lastError? }]
@@ -238,6 +239,13 @@ export const storageService = {
     else delete all[groupId]
     writeJSON(KEYS.highlightTags, all)
     return clean
+  },
+  /** How Meus destaques groups its list: under book and chapter, or under tag. */
+  getHighlightGrouping() {
+    return readJSON(KEYS.highlightGrouping, 'book')
+  },
+  setHighlightGrouping(grouping) {
+    writeJSON(KEYS.highlightGrouping, grouping)
   },
 
   getReadVerses() {
