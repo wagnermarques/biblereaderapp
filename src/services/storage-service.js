@@ -7,6 +7,7 @@ const KEYS = {
   lastRead: 'bible:last-read', // { book, chapter }
   bookmarks: 'bible:bookmarks', // [{ book, chapter, verse }]
   markedTexts: 'bible:marked-texts', // [{ id, groupId, translation, book, chapter, verse, startOffset, endOffset, color, text, createdAt }]
+  highlightTags: 'bible:highlight-tags', // { [groupId]: ['tag', ...] }
   readVerses: 'bible:read-verses', // [{ book, chapter, verse }]
   sermons: 'bible:sermons', // [{ id, date, weekday, cultTitle, title, remarks, verses, createdAt, updatedAt }]
   outbox: 'bible:outbox', // [{ id, op, payload, createdAt, failed?, lastError? }]
@@ -211,7 +212,32 @@ export const storageService = {
     const kept = list.filter((m) => markGroupId(m) !== groupId)
     if (kept.length === list.length) return false
     writeJSON(KEYS.markedTexts, kept)
+    this.setHighlightTags(groupId, [])
     return true
+  },
+
+  /**
+   * Tags belong to the highlight as a whole, so they're keyed by group id
+   * rather than copied onto every per-verse piece.
+   */
+  getAllHighlightTags() {
+    return readJSON(KEYS.highlightTags, {})
+  },
+  /** Replaces a highlight's tags, trimmed and without case-insensitive repeats. */
+  setHighlightTags(groupId, tags) {
+    const all = this.getAllHighlightTags()
+    const seen = new Set()
+    const clean = []
+    for (const tag of tags) {
+      const t = tag.trim().replace(/\s+/g, ' ')
+      if (!t || seen.has(t.toLocaleLowerCase())) continue
+      seen.add(t.toLocaleLowerCase())
+      clean.push(t)
+    }
+    if (clean.length) all[groupId] = clean
+    else delete all[groupId]
+    writeJSON(KEYS.highlightTags, all)
+    return clean
   },
 
   getReadVerses() {
