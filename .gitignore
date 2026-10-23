@@ -23,3 +23,6 @@ temp
 *.njsproj
 *.sln
 *.sw?
+
+# Project-local Emacs packages (see init.el)
+.emacs.d/
