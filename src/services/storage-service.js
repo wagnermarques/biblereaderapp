@@ -9,6 +9,7 @@ const KEYS = {
   markedTexts: 'bible:marked-texts', // [{ id, groupId, translation, book, chapter, verse, startOffset, endOffset, color, text, createdAt }]
   highlightTags: 'bible:highlight-tags', // { [groupId]: ['tag', ...] }
   highlightGrouping: 'bible:highlight-grouping', // 'book' | 'tag'
+  highlightCollapsed: 'bible:highlight-collapsed', // lowercased tag names folded in Meus destaques
   readVerses: 'bible:read-verses', // [{ book, chapter, verse }]
   sermons: 'bible:sermons', // [{ id, date, weekday, cultTitle, title, remarks, verses, createdAt, updatedAt }]
   outbox: 'bible:outbox', // [{ id, op, payload, createdAt, failed?, lastError? }]
@@ -246,6 +247,13 @@ export const storageService = {
   },
   setHighlightGrouping(grouping) {
     writeJSON(KEYS.highlightGrouping, grouping)
+  },
+  /** Tag sections the reader folded away, so the list reopens the way it was left. */
+  getCollapsedTagSections() {
+    return readJSON(KEYS.highlightCollapsed, [])
+  },
+  setCollapsedTagSections(keys) {
+    writeJSON(KEYS.highlightCollapsed, keys)
   },
 
   getReadVerses() {

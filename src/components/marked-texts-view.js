@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit'
+import { live } from 'lit/directives/live.js'
 import { bibleDataService } from '../services/bible-data-service.js'
 import { storageService, markGroupId, markTranslationId } from '../services/storage-service.js'
 import { translation } from '../translations.js'
@@ -82,9 +83,12 @@ export class MarkedTextsView extends LitElement {
       display: inline-flex;
       align-items: center;
       gap: 2px;
+      min-height: 32px;
       background: none;
       border: none;
-      padding: 0;
+      /* A bigger hit area than the text, without moving the text itself. */
+      padding: 4px 8px;
+      margin: -4px -8px;
       font: inherit;
       font-size: 0.8rem;
       color: var(--md-sys-color-primary);
@@ -140,27 +144,62 @@ export class MarkedTextsView extends LitElement {
       font-size: 0.85rem;
       color: var(--md-sys-color-on-surface-variant);
     }
+    /* Tag headings are the main thing tapped on a phone, so they're full-width
+       bars at touch size, and they stay pinned while their section scrolls by. */
+    h2.tag-heading {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      margin: 16px 0 4px;
+      background: var(--md-sys-color-background);
+    }
     h2 .section {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 8px;
       width: 100%;
-      background: none;
+      min-height: 48px;
+      padding: 0 8px 0 16px;
       border: none;
-      padding: 0;
+      border-radius: 12px;
+      background: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
       font: inherit;
-      letter-spacing: inherit;
-      text-transform: inherit;
-      color: inherit;
-      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 500;
+      letter-spacing: normal;
+      text-transform: none;
       text-align: left;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    h2 .section:active {
+      background: var(--md-sys-color-secondary-container);
+    }
+    h2 .section .name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    h2 .badge {
+      min-width: 24px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      text-align: center;
+      background: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
     }
     h2 .section md-icon {
-      font-size: 20px;
-      --md-icon-size: 20px;
+      transition: transform 0.2s ease;
     }
-    h2 .count {
-      opacity: 0.7;
+    h2 .section[aria-expanded='false'] md-icon {
+      transform: rotate(-90deg);
+    }
+    .fold-all {
+      margin-left: auto;
     }
     .chip {
       display: inline-flex;
@@ -216,7 +255,7 @@ export class MarkedTextsView extends LitElement {
     this._tagInput = ''
     this._grouping = storageService.getHighlightGrouping()
     // Tag sections the reader folded away, by lowercased tag name.
-    this._collapsed = new Set()
+    this._collapsed = new Set(storageService.getCollapsedTagSections())
     // Full chapter text for expanded highlights, keyed by translation:book:chapter.
     this._chapters = new Map()
   }
@@ -337,7 +376,12 @@ export class MarkedTextsView extends LitElement {
     const collapsed = new Set(this._collapsed)
     if (collapsed.has(key)) collapsed.delete(key)
     else collapsed.add(key)
+    this._setCollapsed(collapsed)
+  }
+
+  _setCollapsed(collapsed) {
     this._collapsed = collapsed
+    storageService.setCollapsedTagSections([...collapsed])
   }
 
   _open(highlight) {
@@ -404,7 +448,13 @@ export class MarkedTextsView extends LitElement {
     this._tagging = highlight.id
   }
 
+  /**
+   * Text still sitting in the field counts as a tag: readers type one and tap
+   * Concluir, and on Android the keyboard's Enter often never reaches us as a
+   * key event while a word is being composed.
+   */
   _closeTagEditor() {
+    if (this._tagging && this._tagInput.trim()) this._addTag(this._tagInput)
     this._tagging = null
   }
 
@@ -417,9 +467,11 @@ export class MarkedTextsView extends LitElement {
     if (typeof this._filter === 'string' && !stillUsed) this._filter = null
   }
 
-  _addTag(name) {
-    if (!name.trim()) return
-    this._setTags([...this._tagsOf(this._tagging), name])
+  /** Adds one tag, or several when they're typed separated by commas. */
+  _addTag(input) {
+    const names = input.split(',').filter((t) => t.trim())
+    if (!names.length) return
+    this._setTags([...this._tagsOf(this._tagging), ...names])
     this._tagInput = ''
   }
 
@@ -497,14 +549,16 @@ export class MarkedTextsView extends LitElement {
             style="width:100%;margin-top:16px;"
             label="Nova tag"
             placeholder="Ex: Fé, Promessas, Oração..."
-            .value=${this._tagInput}
+            supporting-text="Separe várias tags com vírgula"
+            .value=${live(this._tagInput)}
             @input=${(e) => (this._tagInput = e.target.value)}
             @keydown=${(e) => {
-              if (e.key === 'Enter') {
+              if (e.key === 'Enter' || e.keyCode === 13) {
                 e.preventDefault()
                 this._addTag(this._tagInput)
               }
             }}
+            @change=${() => this._addTag(this._tagInput)}
           ></md-outlined-text-field>
           ${suggestions.length
             ? html`
@@ -615,7 +669,21 @@ export class MarkedTextsView extends LitElement {
     return html`
       <div class="grouping" role="group" aria-label="Agrupar por">
         Agrupar por: ${option('Livro', 'book')} ${option('Tag', 'tag')}
+        ${this._grouping === 'tag' && this._marks.length ? this._renderFoldAll() : ''}
       </div>
+    `
+  }
+
+  _renderFoldAll() {
+    const keys = this._tagSections(this._groups()).map((section) => section.key)
+    const allOpen = keys.every((key) => !this._collapsed.has(key))
+    return html`
+      <md-text-button
+        class="fold-all"
+        @click=${() => this._setCollapsed(allOpen ? new Set(keys) : new Set())}
+      >
+        ${allOpen ? 'Recolher tudo' : 'Expandir tudo'}
+      </md-text-button>
     `
   }
 
@@ -638,15 +706,16 @@ export class MarkedTextsView extends LitElement {
     return this._tagSections(groups).map((section) => {
       const open = !this._collapsed.has(section.key)
       return html`
-        <h2>
+        <h2 class="tag-heading">
           <button
             type="button"
             class="section"
             aria-expanded=${open ? 'true' : 'false'}
             @click=${() => this._toggleSection(section.key)}
           >
-            <md-icon>${open ? 'expand_more' : 'chevron_right'}</md-icon>
-            ${section.name} <span class="count">(${section.highlights.length})</span>
+            <span class="name">${section.name}</span>
+            <span class="badge">${section.highlights.length}</span>
+            <md-icon>expand_more</md-icon>
           </button>
         </h2>
         ${open ? section.highlights.map((highlight) => this._renderHighlight(highlight, section.key)) : ''}
