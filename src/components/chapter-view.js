@@ -301,7 +301,6 @@ export class ChapterView extends LitElement {
     this._cultTitleInput = ''
     this._pendingVerseForToday = null
     this._toastMessage = null
-    this._suppressClick = false
     // Android hands a long-press to its own selection UI and dispatches
     // touchcancel rather than touchend, so a touch-event trigger never fires
     // for the very gesture that selects text. selectionchange is the signal
@@ -420,73 +419,6 @@ export class ChapterView extends LitElement {
     })
   }
 
-  _onVerseClick(verseNum) {
-    if (this._suppressClick) {
-      this._suppressClick = false
-      return
-    }
-    this._toggleBookmark(verseNum)
-  }
-
-  _onVerseTouchStart(e, verseNum, text) {
-    const touch = e.touches[0]
-    this._touchStartX = touch.clientX
-    this._touchStartY = touch.clientY
-    this._suppressClick = false
-    clearTimeout(this._longPressTimer)
-    this._longPressTimer = setTimeout(() => {
-      this._suppressClick = true
-      if (navigator.vibrate) navigator.vibrate(40)
-      this._openVerseOptionsDialog({ verseNum, text })
-    }, 480)
-  }
-
-  _onVerseTouchMove(e) {
-    if (this._touchStartX === null || this._touchStartX === undefined) return
-    const touch = e.touches[0]
-    const dist = Math.hypot(touch.clientX - this._touchStartX, touch.clientY - this._touchStartY)
-    if (dist > 10) {
-      clearTimeout(this._longPressTimer)
-    }
-  }
-
-  _onVerseTouchEnd() {
-    clearTimeout(this._longPressTimer)
-    this._touchStartX = null
-    this._touchStartY = null
-  }
-
-  _onVerseMouseDown(e, verseNum, text) {
-    if (e.button !== 0) return
-    this._mouseStartX = e.clientX
-    this._mouseStartY = e.clientY
-    clearTimeout(this._longPressTimer)
-    this._longPressTimer = setTimeout(() => {
-      this._suppressClick = true
-      this._openVerseOptionsDialog({ verseNum, text })
-    }, 500)
-  }
-
-  _onVerseMouseMove(e) {
-    if (this._mouseStartX === null || this._mouseStartX === undefined) return
-    const dist = Math.hypot(e.clientX - this._mouseStartX, e.clientY - this._mouseStartY)
-    if (dist > 8) {
-      clearTimeout(this._longPressTimer)
-    }
-  }
-
-  _onVerseMouseUp() {
-    clearTimeout(this._longPressTimer)
-    this._mouseStartX = null
-    this._mouseStartY = null
-  }
-
-  _onVerseContextMenu(e, verseNum, text) {
-    e.preventDefault()
-    this._suppressClick = true
-    this._openVerseOptionsDialog({ verseNum, text })
-  }
-
   _openVerseOptionsDialog({ verseNum, verseEnd = null, text }) {
     this._verseOptions = { verseNum, verseEnd, text }
   }
@@ -599,13 +531,14 @@ export class ChapterView extends LitElement {
   _addSelectionToSermon() {
     const pieces = this._selection() ?? this._sel
     if (!pieces || !pieces.length) return
-    const first = pieces[0]
-    const last = pieces[pieces.length - 1]
-    const fullText = pieces.map((p) => p.text).join(' ')
+    const first = pieces[0].verse
+    const last = pieces[pieces.length - 1].verse
+    // The sermon links whole verses, and a long press usually selects a single
+    // word, so take the full text of every verse the selection touches.
     this._openVerseOptionsDialog({
-      verseNum: first.verse,
-      verseEnd: first.verse !== last.verse ? last.verse : null,
-      text: fullText,
+      verseNum: first,
+      verseEnd: first !== last ? last : null,
+      text: this._verses.slice(first - 1, last).join(' '),
     })
     this._clearSelection()
     this._sel = null
@@ -873,16 +806,8 @@ export class ChapterView extends LitElement {
                 data-verse=${verseNum}
                 ?data-bookmarked=${bookmarked}
                 ?data-read=${read}
-                title="Toque para favoritar; pressione para opções da pregação"
-                @click=${() => this._onVerseClick(verseNum)}
-                @touchstart=${(e) => this._onVerseTouchStart(e, verseNum, text)}
-                @touchmove=${this._onVerseTouchMove}
-                @touchend=${this._onVerseTouchEnd}
-                @touchcancel=${this._onVerseTouchEnd}
-                @mousedown=${(e) => this._onVerseMouseDown(e, verseNum, text)}
-                @mousemove=${this._onVerseMouseMove}
-                @mouseup=${this._onVerseMouseUp}
-                @contextmenu=${(e) => this._onVerseContextMenu(e, verseNum, text)}
+                title="Toque para favoritar; selecione o texto para marcar ou adicionar à pregação"
+                @click=${() => this._toggleBookmark(verseNum)}
               >
                 <span
                   class="verse-num"
