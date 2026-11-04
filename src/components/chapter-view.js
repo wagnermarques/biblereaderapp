@@ -246,25 +246,6 @@ export class ChapterView extends LitElement {
       justify-content: space-between;
       margin-top: 32px;
     }
-    .chips-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin: 10px 0;
-    }
-    .chip {
-      background: var(--md-sys-color-surface-variant);
-      color: var(--md-sys-color-on-surface-variant);
-      border: 1px solid var(--md-sys-color-outline-variant, #ccc);
-      border-radius: 16px;
-      padding: 4px 10px;
-      font-size: 0.8rem;
-      cursor: pointer;
-    }
-    .chip:hover {
-      background: var(--md-sys-color-primary-container);
-      color: var(--md-sys-color-on-primary-container);
-    }
     .toast {
       position: fixed;
       left: 50%;

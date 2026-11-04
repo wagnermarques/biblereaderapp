@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit'
+import '@fzl/webcomponents-lit/reader-chapterview'
 import {
   storageService,
   formatSermonTitle,
@@ -240,25 +241,6 @@ export class SermonsView extends LitElement {
       gap: 12px;
       padding-top: 16px;
       border-top: 1px solid var(--md-sys-color-outline-variant, #e0e0e0);
-    }
-    .chips-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin: 10px 0;
-    }
-    .chip {
-      background: var(--md-sys-color-surface-variant);
-      color: var(--md-sys-color-on-surface-variant);
-      border: 1px solid var(--md-sys-color-outline-variant, #ccc);
-      border-radius: 16px;
-      padding: 4px 10px;
-      font-size: 0.8rem;
-      cursor: pointer;
-    }
-    .chip:hover {
-      background: var(--md-sys-color-primary-container);
-      color: var(--md-sys-color-on-primary-container);
     }
     .toast {
       position: fixed;
@@ -633,19 +615,17 @@ export class SermonsView extends LitElement {
           <div style="font-size:0.8rem;color:var(--md-sys-color-on-surface-variant);margin-top:4px;">
             Sugestões rápidas:
           </div>
-          <div class="chips-row">
+          <fzl-reader-chapterview-group selection-mode="none" style="margin: 10px 0;">
             ${QUICK_CULT_TITLES.map(
               (title) => html`
-                <button
-                  type="button"
-                  class="chip"
-                  @click=${() => (this._cultTitleInput = title)}
-                >
-                  ${title}
-                </button>
+                <fzl-reader-chapterview
+                  .label=${title}
+                  ?selected=${this._cultTitleInput === title}
+                  @fzl-click=${() => (this._cultTitleInput = title)}
+                ></fzl-reader-chapterview>
               `
             )}
-          </div>
+          </fzl-reader-chapterview-group>
         </form>
         <div slot="actions">
           <md-text-button @click=${() => (this._dialogOpen = false)}>Cancelar</md-text-button>
@@ -674,19 +654,20 @@ export class SermonsView extends LitElement {
             @input=${(e) => (this._cultTitleInput = e.target.value)}
           ></md-outlined-text-field>
 
-          <div class="chips-row">
+          <div style="font-size:0.8rem;color:var(--md-sys-color-on-surface-variant);margin-top:4px;">
+            Sugestões rápidas:
+          </div>
+          <fzl-reader-chapterview-group selection-mode="none" style="margin: 10px 0;">
             ${QUICK_CULT_TITLES.map(
               (title) => html`
-                <button
-                  type="button"
-                  class="chip"
-                  @click=${() => (this._cultTitleInput = title)}
-                >
-                  ${title}
-                </button>
+                <fzl-reader-chapterview
+                  .label=${title}
+                  ?selected=${this._cultTitleInput === title}
+                  @fzl-click=${() => (this._cultTitleInput = title)}
+                ></fzl-reader-chapterview>
               `
             )}
-          </div>
+          </fzl-reader-chapterview-group>
         </form>
         <div slot="actions">
           <md-text-button @click=${() => (this._editDialogOpen = false)}>Cancelar</md-text-button>

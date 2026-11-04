@@ -1,5 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import { live } from 'lit/directives/live.js'
+import '@fzl/webcomponents-lit/reader-chapterview'
 import { bibleDataService } from '../services/bible-data-service.js'
 import { storageService, markGroupId, markTranslationId } from '../services/storage-service.js'
 import { translation } from '../translations.js'
@@ -128,11 +129,6 @@ export class MarkedTextsView extends LitElement {
       background: var(--md-sys-color-surface-variant);
       color: var(--md-sys-color-on-surface-variant);
     }
-    .chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
     .filters {
       margin: 0 0 8px;
     }
@@ -200,38 +196,6 @@ export class MarkedTextsView extends LitElement {
     }
     .fold-all {
       margin-left: auto;
-    }
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      background: var(--md-sys-color-surface-variant);
-      color: var(--md-sys-color-on-surface-variant);
-      border: 1px solid var(--md-sys-color-outline-variant, #ccc);
-      border-radius: 16px;
-      padding: 4px 10px;
-      font: inherit;
-      font-size: 0.8rem;
-      cursor: pointer;
-    }
-    .chip[aria-pressed='true'] {
-      background: var(--md-sys-color-primary-container);
-      color: var(--md-sys-color-on-primary-container);
-      border-color: transparent;
-    }
-    .chip .count {
-      opacity: 0.7;
-    }
-    .tag {
-      font-size: 0.75rem;
-      padding: 1px 8px;
-      border-radius: 10px;
-      background: var(--md-sys-color-secondary-container);
-      color: var(--md-sys-color-on-secondary-container);
-    }
-    .chip md-icon {
-      font-size: 16px;
-      --md-icon-size: 16px;
     }
     .dialog-label {
       margin: 16px 0 6px;
@@ -501,21 +465,19 @@ export class MarkedTextsView extends LitElement {
       ).length
     const untagged = highlights.filter((h) => this._tagsOf(h.id).length === 0).length
     const chip = (label, value, n) => html`
-      <button
-        type="button"
-        class="chip"
-        aria-pressed=${this._filter === value ? 'true' : 'false'}
-        @click=${() => (this._filter = this._filter === value ? null : value)}
-      >
-        ${label}${n === undefined ? '' : html` <span class="count">${n}</span>`}
-      </button>
+      <fzl-reader-chapterview
+        .label=${label}
+        .count=${n}
+        ?selected=${this._filter === value}
+        @fzl-click=${() => (this._filter = this._filter === value ? null : value)}
+      ></fzl-reader-chapterview>
     `
     return html`
-      <div class="chips filters" role="group" aria-label="Filtrar por tag">
+      <fzl-reader-chapterview-group class="filters" role="group" aria-label="Filtrar por tag" selection-mode="none" style="margin-bottom:8px;">
         ${chip('Todos', null)}
         ${names.map((name) => chip(name, name.toLocaleLowerCase(), count(name)))}
         ${untagged ? chip('Sem tag', UNTAGGED, untagged) : ''}
-      </div>
+      </fzl-reader-chapterview-group>
     `
   }
 
@@ -529,21 +491,19 @@ export class MarkedTextsView extends LitElement {
         <div slot="headline">Tags do destaque</div>
         <div slot="content" style="min-width:260px;">
           ${current.length
-            ? html`<div class="chips">
+            ? html`<fzl-reader-chapterview-group selection-mode="none">
                 ${current.map(
                   (t) => html`
-                    <button
-                      type="button"
-                      class="chip"
-                      aria-pressed="true"
-                      aria-label="Remover tag ${t}"
-                      @click=${() => this._removeTag(t)}
-                    >
-                      ${t}<md-icon>close</md-icon>
-                    </button>
+                    <fzl-reader-chapterview
+                      .label=${t}
+                      selected
+                      removable
+                      remove-aria-label="Remover tag ${t}"
+                      @fzl-remove=${() => this._removeTag(t)}
+                    ></fzl-reader-chapterview>
                   `
                 )}
-              </div>`
+              </fzl-reader-chapterview-group>`
             : html`<p class="empty" style="margin:0;">Este destaque ainda não tem tags.</p>`}
           <md-outlined-text-field
             style="width:100%;margin-top:16px;"
@@ -563,15 +523,19 @@ export class MarkedTextsView extends LitElement {
           ${suggestions.length
             ? html`
                 <p class="dialog-label">Tags existentes</p>
-                <div class="chips">
+                <fzl-reader-chapterview-group selection-mode="none">
                   ${suggestions.map(
                     (t) => html`
-                      <button type="button" class="chip" @click=${() => this._addTag(t)}>
-                        <md-icon>add</md-icon>${t}
-                      </button>
+                      <fzl-reader-chapterview
+                        .label=${t}
+                        @fzl-click=${() => this._addTag(t)}
+                      >
+                        <md-icon slot="icon" style="font-size:16px;--md-icon-size:16px;margin-right:2px;">add</md-icon>
+                        ${t}
+                      </fzl-reader-chapterview>
                     `
                   )}
-                </div>
+                </fzl-reader-chapterview-group>
               `
             : ''}
         </div>
@@ -615,7 +579,7 @@ export class MarkedTextsView extends LitElement {
               <md-icon>${expanded ? 'expand_less' : 'expand_more'}</md-icon>
               ${expanded ? 'Ocultar versículo' : 'Ver versículo'}
             </button>
-            ${this._tagsOf(highlight.id).map((t) => html`<span class="tag">${t}</span>`)}
+            ${this._tagsOf(highlight.id).map((t) => html`<fzl-reader-chapterview .label=${t}></fzl-reader-chapterview>`)}
           </div>
           ${expanded ? this._renderVerses(highlight) : ''}
         </div>
@@ -657,18 +621,19 @@ export class MarkedTextsView extends LitElement {
 
   _renderGroupingToggle() {
     const option = (label, value) => html`
-      <button
-        type="button"
-        class="chip"
-        aria-pressed=${this._grouping === value ? 'true' : 'false'}
-        @click=${() => this._setGrouping(value)}
-      >
-        ${label}
-      </button>
+      <fzl-reader-chapterview
+        .label=${label}
+        ?selected=${this._grouping === value}
+        @fzl-click=${() => this._setGrouping(value)}
+      ></fzl-reader-chapterview>
     `
     return html`
       <div class="grouping" role="group" aria-label="Agrupar por">
-        Agrupar por: ${option('Livro', 'book')} ${option('Tag', 'tag')}
+        <span>Agrupar por:</span>
+        <fzl-reader-chapterview-group selection-mode="none">
+          ${option('Livro', 'book')}
+          ${option('Tag', 'tag')}
+        </fzl-reader-chapterview-group>
         ${this._grouping === 'tag' && this._marks.length ? this._renderFoldAll() : ''}
       </div>
     `
