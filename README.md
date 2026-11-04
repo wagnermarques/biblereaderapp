@@ -65,29 +65,34 @@ A chave anon é pública por design (o controle de acesso é feito pelas políti
 ## Desenvolvimento
 
 ```bash
+git submodule update --init --recursive  # garante o appshell atualizado
 npm install
 npm run dev       # servidor de desenvolvimento
 npm run build     # build de produção em dist/
 npm run preview   # pré-visualiza o build de produção
+npm run serve     # atalho para build + preview
 ```
 
 ## Deploy no GitHub Pages
 
 1. No GitHub, em **Settings → Pages**, defina **Source: GitHub Actions**.
-2. `vite.config.js` já define `base: '/biblereaderapp/'` — atualize `REPO_NAME` nesse arquivo se o repositório tiver outro nome.
-3. `main` é a branch de trabalho do dia a dia; `production` é a branch de deploy. Dê push/merge em `production` — o workflow em `.github/workflows/deploy.yml` builda e publica automaticamente a partir dela.
+2. `appshell.config.js` define `base: '/biblereaderapp/'` — atualize se o repositório tiver outro nome.
+3. `develop` (ou `main`) é a branch de trabalho; `production` é a branch de deploy. Dê push/merge em `production` — o workflow em `.github/workflows/deploy.yml` (com checkout recursivo de submódulos) builda e publica automaticamente a partir dela.
 
 ## Estrutura
 
 ```
+fzl-fund-ui/      # Submódulo monorepo do Appshell e Web Components FZL
+appshell.config.js# Configuração declarativa do appshell (título, a11y, manifest, cache)
 src/
-  components/     # <app-shell>, <bible-nav>, <chapter-view>, <search-view>,
-                  # <book-list-view>, <purpose-view>, <account-view>, <nav-accordion>,
-                  # <marked-texts-view>, <sermons-view>
+  components/     # <chapter-view>, <chapter-grid-view>, <search-view>,
+                  # <book-list-view>, <purpose-view>, <bibles-view>,
+                  # <marked-texts-view>, <sermons-view>, <sync-status>
   services/       # bible-data-service, search-service, storage-service,
-                  # supabase-client, auth-service, sync-service
-  styles/         # tokens de cor Material 3 (tema claro/escuro)
-  router.js       # hash router
+                  # supabase-client, auth-service, sync-service,
+                  # supabase-auth-provider
+  router.js       # auxiliares de navegação
+  main.js         # createAppShell() do fzl-fund-appshell--lit
   main.js
 public/
   data/<tradução>/   # books-index.json + books/*.json (texto bíblico de cada tradução)

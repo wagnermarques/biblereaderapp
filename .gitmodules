@@ -1,0 +1,3 @@
+[submodule "fzl-fund-ui"]
+	path = fzl-fund-ui
+	url = https://github.com/wagnermarques/fzl-fund-ui.git

@@ -4,10 +4,18 @@
   "private": true,
   "license": "AGPL-3.0-or-later",
   "type": "module",
+  "workspaces": [
+    "fzl-fund-ui/packages/*",
+    "fzl-fund-ui/webcomponents-es6",
+    "fzl-fund-ui/webcomponents-lit",
+    "fzl-fund-ui/webcomponents-angular",
+    "fzl-fund-ui/appshell-lit"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "serve": "npm run build && npm run preview"
   },
   "devDependencies": {
     "sharp": "^0.35.4",
@@ -18,6 +26,7 @@
     "@material-symbols/font-400": "^0.47.1",
     "@material/web": "^2.5.0",
     "@supabase/supabase-js": "^2.112.4",
+    "fzl-fund-appshell--lit": "*",
     "lit": "^3.3.3"
   }
 }
