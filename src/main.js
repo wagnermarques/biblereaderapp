@@ -163,6 +163,13 @@ createAppShell({
   `,
   auth: supabaseAuthProvider.isConfigured() ? supabaseAuthProvider : null,
   on: {
+    'route:change': ({ query }) => {
+      if (!query?.v) {
+        const main = document.querySelector('app-shell')?.shadowRoot?.querySelector('main')
+        if (main) main.scrollTop = 0
+        window.scrollTo?.(0, 0)
+      }
+    },
     'auth:login': ({ user }) => {
       if (user?.id) {
         syncService.syncAll(user.id)

@@ -36,7 +36,7 @@ function scrollParent(el) {
   while (node) {
     if (node.nodeType === Node.ELEMENT_NODE) {
       const overflow = getComputedStyle(node).overflowY
-      if (/(auto|scroll)/.test(overflow) && node.scrollHeight > node.clientHeight) return node
+      if (/(auto|scroll)/.test(overflow)) return node
     }
     node = node.parentNode ?? node.host
   }
@@ -348,6 +348,20 @@ export class ChapterView extends LitElement {
     clearTimeout(this._flashTimer)
   }
 
+  _scrollToTop() {
+    const scroller =
+      scrollParent(this) ??
+      this.closest('main') ??
+      document.querySelector('app-shell')?.shadowRoot?.querySelector('main')
+    if (scroller) {
+      scroller.scrollTop = 0
+    }
+    this.scrollTop = 0
+    window.scrollTo?.(0, 0)
+    if (document.documentElement) document.documentElement.scrollTop = 0
+    if (document.body) document.body.scrollTop = 0
+  }
+
   async _load() {
     this._error = null
     this._sel = null
@@ -358,8 +372,10 @@ export class ChapterView extends LitElement {
       this._bookMeta = index.find((b) => b.id === this.bookId) ?? null
       this._verses = await bibleDataService.getChapter(this.bookId, this.chapter)
       storageService.setLastRead(this.bookId, this.chapter)
-      this.scrollTop = 0
       await this.updateComplete
+      if (!this.verse) {
+        this._scrollToTop()
+      }
       this._setupReadObserver()
       this._revealVerse()
     } catch (err) {
@@ -703,6 +719,7 @@ export class ChapterView extends LitElement {
     if (!this._bookMeta) return
     const next = this.chapter + delta
     if (next >= 1 && next <= this._bookMeta.chapters) {
+      this._scrollToTop()
       navigateToChapter(this.bookId, next)
     }
   }
