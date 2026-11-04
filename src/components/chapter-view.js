@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit'
+import '@fzl/webcomponents-lit/reader-chapterview'
 import { bibleDataService } from '../services/bible-data-service.js'
 import { storageService, markGroupId, getTodayDateString } from '../services/storage-service.js'
 import { syncService } from '../services/sync-service.js'
@@ -924,19 +925,17 @@ export class ChapterView extends LitElement {
           <div style="font-size:0.8rem;color:var(--md-sys-color-on-surface-variant);">
             Sugestões rápidas:
           </div>
-          <div class="chips-row">
+          <fzl-reader-chapterview-group selection-mode="none" style="margin: 10px 0;">
             ${QUICK_CULT_TITLES.map(
               (title) => html`
-                <button
-                  type="button"
-                  class="chip"
-                  @click=${() => (this._cultTitleInput = title)}
-                >
-                  ${title}
-                </button>
+                <fzl-reader-chapterview
+                  .label=${title}
+                  ?selected=${this._cultTitleInput === title}
+                  @fzl-click=${() => (this._cultTitleInput = title)}
+                ></fzl-reader-chapterview>
               `
             )}
-          </div>
+          </fzl-reader-chapterview-group>
         </form>
         <div slot="actions">
           <md-text-button @click=${() => (this._newTodaySermonPrompt = false)}>Cancelar</md-text-button>

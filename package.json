@@ -12,7 +12,9 @@
     "fzl-fund-ui/appshell-lit"
   ],
   "scripts": {
+    "predev": "npm run build --workspace=@fzl/webcomponents-lit --if-present",
     "dev": "vite",
+    "prebuild": "npm run build --workspace=@fzl/webcomponents-lit --if-present",
     "build": "vite build",
     "preview": "vite preview",
     "serve": "npm run build && npm run preview"
