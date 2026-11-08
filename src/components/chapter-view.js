@@ -1,10 +1,19 @@
 import { LitElement, html, css } from 'lit'
 import '@fzl/webcomponents-lit/reader-chapterview'
+import '@fzl/webcomponents-lit/reader-mark-bar'
 import { bibleDataService } from '../services/bible-data-service.js'
 import { storageService, markGroupId, getTodayDateString } from '../services/storage-service.js'
 import { syncService } from '../services/sync-service.js'
 import { navigateToChapter } from '../router.js'
 import { MARK_COLORS, MARK_TEXT_COLOR, markColor } from '../mark-colors.js'
+
+const READER_MARK_COLORS = MARK_COLORS.map((c) => ({
+  id: c.id,
+  name: c.label,
+  bg: c.background,
+  border: c.background,
+  text: MARK_TEXT_COLOR,
+}))
 
 const QUICK_CULT_TITLES = [
   'Culto de Domingo',
@@ -204,43 +213,6 @@ export class ChapterView extends LitElement {
       border-radius: 3px;
       padding: 1px 0;
     }
-    .mark-bar {
-      position: fixed;
-      left: 50%;
-      bottom: 0;
-      transform: translateX(-50%);
-      z-index: 5;
-      box-sizing: border-box;
-      width: min(100%, 720px);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-      background: var(--md-sys-color-surface);
-      color: var(--md-sys-color-on-surface);
-      border-top: 1px solid var(--md-sys-color-outline);
-      box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.18);
-    }
-    .colors {
-      display: flex;
-      flex: 1;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-    .swatch {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      border: 2px solid transparent;
-      cursor: pointer;
-      padding: 0;
-    }
-    .swatch[data-selected] {
-      border-color: var(--md-sys-color-primary);
-      outline: 2px solid var(--md-sys-color-primary);
-      outline-offset: 2px;
-    }
     nav.chapter-nav {
       display: flex;
       justify-content: space-between;
@@ -295,9 +267,11 @@ export class ChapterView extends LitElement {
     // outside the bar is what dismisses it.
     this._onDocumentPointerDown = (event) => {
       if (!this._editing) return
-      const bar = this.renderRoot.querySelector('.mark-bar')
+      const bar = this.renderRoot.querySelector('fzl-reader-mark-bar')
       if (bar && event.composedPath().includes(bar)) return
       this._editing = null
+      if (bar) bar.hide()
+      this.requestUpdate()
     }
   }
 
@@ -589,6 +563,16 @@ export class ChapterView extends LitElement {
     return !!(this._sel || this._editing)
   }
 
+  get _selectedText() {
+    if (this._sel) {
+      return this._sel.map((p) => p.text).join(' ')
+    }
+    if (this._editing) {
+      return this._editing.text
+    }
+    return ''
+  }
+
   /**
    * Follows the live selection instead of waiting for a final one. The bar can
    * appear while the reader is still dragging a handle, because the mark is cut
@@ -597,13 +581,22 @@ export class ChapterView extends LitElement {
    */
   _trackSelection() {
     const selection = this._selection()
+    const markBar = this.renderRoot.querySelector('fzl-reader-mark-bar')
     if (selection) {
       const wasOpen = this._barOpen
       this._editing = null
       this._sel = selection
-      if (!wasOpen) this._revealAboveBar(this._selectionRect())
+      const rect = this._selectionRect()
+      const text = selection.map((p) => p.text).join(' ')
+      if (markBar) {
+        markBar.showAt(rect, text)
+      }
+      if (!wasOpen) this._revealAboveBar(rect)
     } else if (this._sel) {
       this._sel = null
+      if (markBar && !this._editing) {
+        markBar.hide()
+      }
     }
   }
 
@@ -611,7 +604,12 @@ export class ChapterView extends LitElement {
     event.stopPropagation()
     this._sel = null
     this._editing = mark
-    this._revealAboveBar(event.currentTarget.getBoundingClientRect())
+    const rect = event.currentTarget.getBoundingClientRect()
+    const markBar = this.renderRoot.querySelector('fzl-reader-mark-bar')
+    if (markBar) {
+      markBar.showAt(rect, mark.text)
+    }
+    this._revealAboveBar(rect)
   }
 
   /**
@@ -620,7 +618,11 @@ export class ChapterView extends LitElement {
    * mark by the time the click lands.
    */
   _onBarPointerDown(event) {
-    event.preventDefault()
+    const path = event.composedPath()
+    const isDrag = path.some((el) => el.classList?.contains('drag-handle'))
+    if (!isDrag) {
+      event.preventDefault()
+    }
   }
 
   _applyColor(colorId) {
@@ -646,13 +648,71 @@ export class ChapterView extends LitElement {
       this._clearSelection()
       this._sel = null
     }
+    const markBar = this.renderRoot.querySelector('fzl-reader-mark-bar')
+    if (markBar) markBar.hide()
     this.requestUpdate()
   }
 
   _removeMark() {
     if (this._editing) storageService.removeMarkedGroup(markGroupId(this._editing))
     this._editing = null
+    const markBar = this.renderRoot.querySelector('fzl-reader-mark-bar')
+    if (markBar) markBar.hide()
     this.requestUpdate()
+  }
+
+  _onFzlBarClose() {
+    this._clearSelection()
+    this._sel = null
+    this._editing = null
+    this.requestUpdate()
+  }
+
+  _onFzlReaderAction(event) {
+    const action = event.detail?.action
+    if (action === 'clear') {
+      if (this._editing) {
+        this._removeMark()
+      } else {
+        this._clearSelection()
+        this._sel = null
+        const markBar = this.renderRoot.querySelector('fzl-reader-mark-bar')
+        if (markBar) markBar.hide()
+        this.requestUpdate()
+      }
+    } else if (action === 'note') {
+      if (this._editing) {
+        this._openVerseOptionsDialog({
+          verseNum: this._editing.verse,
+          verseEnd: null,
+          text: this._editing.text,
+        })
+        this._editing = null
+      } else {
+        this._addSelectionToSermon()
+      }
+      const markBar = this.renderRoot.querySelector('fzl-reader-mark-bar')
+      if (markBar) markBar.hide()
+      this.requestUpdate()
+    } else if (action === 'share') {
+      const text = this._selectedText
+      if (navigator.share && text) {
+        navigator
+          .share({
+            title: `${this._bookMeta?.name || this.bookId} ${this.chapter}`,
+            text: `"${text}" (${this._bookMeta?.name || this.bookId} ${this.chapter})`,
+          })
+          .catch(() => {})
+      } else if (text) {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(`"${text}" (${this._bookMeta?.name || this.bookId} ${this.chapter})`).then(() => {
+            this._showToast('Trecho copiado para compartilhamento!')
+          })
+        }
+      }
+    } else if (action === 'underline') {
+      this._applyColor('yellow')
+    }
   }
 
   /**
@@ -683,10 +743,11 @@ export class ChapterView extends LitElement {
   async _revealAboveBar(rect) {
     if (!rect) return
     await this.updateComplete
-    const bar = this.renderRoot.querySelector('.mark-bar')
+    const bar = this.renderRoot.querySelector('fzl-reader-mark-bar')
     if (!bar) return
-    const overlap = rect.bottom - bar.getBoundingClientRect().top + REVEAL_GAP
-    if (overlap > 0) {
+    const barRect = bar.getBoundingClientRect()
+    const overlap = rect.bottom - barRect.top + REVEAL_GAP
+    if (overlap > 0 && barRect.bottom > rect.top) {
       const target = scrollParent(this) ?? window
       target.scrollBy({ top: overlap, behavior: 'smooth' })
     }
@@ -720,45 +781,17 @@ export class ChapterView extends LitElement {
   }
 
   _renderMarkBar() {
-    if (!this._barOpen) return ''
-    const current = this._editing?.color
     return html`
-      <div
-        class="mark-bar"
-        role="toolbar"
-        aria-label=${this._editing ? 'Editar marcação' : 'Marcar texto'}
+      <fzl-reader-mark-bar
+        mode="floating"
+        .colors=${READER_MARK_COLORS}
+        ?visible=${this._barOpen}
+        .selectedText=${this._selectedText}
+        @fzl-mark=${(e) => this._applyColor(e.detail?.color?.id)}
+        @fzl-reader-action=${this._onFzlReaderAction}
+        @fzl-bar-close=${this._onFzlBarClose}
         @pointerdown=${this._onBarPointerDown}
-      >
-        <div class="colors">
-          ${MARK_COLORS.map(
-            (color) => html`
-              <button
-                type="button"
-                class="swatch"
-                aria-label=${color.label}
-                title=${color.label}
-                ?data-selected=${current === color.id}
-                style="background:${color.background}"
-                @click=${() => this._applyColor(color.id)}
-              ></button>
-            `
-          )}
-        </div>
-        ${this._editing
-          ? html`<md-icon-button aria-label="Remover marcação" @click=${this._removeMark}>
-              <md-icon>delete</md-icon>
-            </md-icon-button>`
-          : ''}
-        ${this._sel
-          ? html`<md-icon-button
-              aria-label="Adicionar seleção à pregação"
-              title="Adicionar à pregação de hoje"
-              @click=${this._addSelectionToSermon}
-            >
-              <md-icon>record_voice_over</md-icon>
-            </md-icon-button>`
-          : ''}
-      </div>
+      ></fzl-reader-mark-bar>
     `
   }
 

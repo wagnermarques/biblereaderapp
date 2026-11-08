@@ -6,6 +6,7 @@ export const MARK_COLORS = [
   { id: 'green', label: 'Verde', background: '#c8e6c9' },
   { id: 'blue', label: 'Azul', background: '#bbdefb' },
   { id: 'pink', label: 'Rosa', background: '#f8bbd0' },
+  { id: 'purple', label: 'Roxo', background: '#e1bee7' },
   { id: 'orange', label: 'Laranja', background: '#ffe0b2' },
 ]
 
