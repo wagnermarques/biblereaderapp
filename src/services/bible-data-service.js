@@ -31,7 +31,11 @@ export const bibleDataService = {
   /** Lightweight list of all books (id, name, testament, chapter count) — no verse text. */
   async getIndex(translationId = this.translationId) {
     if (!indexPromises.has(translationId)) {
-      indexPromises.set(translationId, fetchJSON(`${DATA_BASE}/${translationId}/books-index.json`))
+      const promise = fetchJSON(`${DATA_BASE}/${translationId}/books-index.json`).catch((err) => {
+        indexPromises.delete(translationId)
+        throw err
+      })
+      indexPromises.set(translationId, promise)
     }
     return indexPromises.get(translationId)
   },
@@ -40,7 +44,11 @@ export const bibleDataService = {
   async getBook(bookId, translationId = this.translationId) {
     const cache = bookCache(translationId)
     if (!cache.has(bookId)) {
-      cache.set(bookId, fetchJSON(`${DATA_BASE}/${translationId}/books/${bookId}.json`))
+      const promise = fetchJSON(`${DATA_BASE}/${translationId}/books/${bookId}.json`).catch((err) => {
+        cache.delete(bookId)
+        throw err
+      })
+      cache.set(bookId, promise)
     }
     return cache.get(bookId)
   },

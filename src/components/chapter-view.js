@@ -127,6 +127,7 @@ export class ChapterView extends LitElement {
     chapter: { type: Number },
     verse: { type: Number },
     fontScale: { type: Number, attribute: 'font-scale' },
+    _books: { state: true },
     _bookMeta: { state: true },
     _verses: { state: true },
     _error: { state: true },
@@ -325,6 +326,7 @@ export class ChapterView extends LitElement {
     this._teardownReadObserver()
     try {
       const index = await bibleDataService.getIndex()
+      this._books = index
       this._bookMeta = index.find((b) => b.id === this.bookId) ?? null
       this._verses = await bibleDataService.getChapter(this.bookId, this.chapter)
       storageService.setLastRead(this.bookId, this.chapter)
@@ -758,12 +760,25 @@ export class ChapterView extends LitElement {
     sel?.removeAllRanges()
   }
 
-  _goToChapter(delta) {
+  async _goToChapter(delta) {
     if (!this._bookMeta) return
     const next = this.chapter + delta
     if (next >= 1 && next <= this._bookMeta.chapters) {
       this._scrollToTop()
       navigateToChapter(this.bookId, next)
+      return
+    }
+
+    const books = this._books || (await bibleDataService.getIndex())
+    const bookIdx = books.findIndex((b) => b.id === this.bookId)
+    if (delta > 0 && bookIdx >= 0 && bookIdx < books.length - 1) {
+      const nextBook = books[bookIdx + 1]
+      this._scrollToTop()
+      navigateToChapter(nextBook.id, 1)
+    } else if (delta < 0 && bookIdx > 0) {
+      const prevBook = books[bookIdx - 1]
+      this._scrollToTop()
+      navigateToChapter(prevBook.id, prevBook.chapters)
     }
   }
 
@@ -859,17 +874,22 @@ export class ChapterView extends LitElement {
       ${this._renderTodaySermonPromptDialog()}
       ${this._renderPickSermonDialog()}
       ${this._toastMessage ? html`<div class="toast">${this._toastMessage}</div>` : ''}
-      <nav class="chapter-nav">
-        <md-text-button ?disabled=${this.chapter <= 1} @click=${() => this._goToChapter(-1)}>
-          ← Capítulo anterior
-        </md-text-button>
-        <md-text-button
-          ?disabled=${this.chapter >= this._bookMeta.chapters}
-          @click=${() => this._goToChapter(1)}
-        >
-          Próximo capítulo →
-        </md-text-button>
-      </nav>
+      ${(() => {
+        const books = this._books || []
+        const bookIdx = books.findIndex((b) => b.id === this.bookId)
+        const isFirst = this.chapter <= 1 && bookIdx <= 0
+        const isLast = this.chapter >= this._bookMeta.chapters && (bookIdx === -1 || bookIdx >= books.length - 1)
+        return html`
+          <nav class="chapter-nav">
+            <md-text-button ?disabled=${isFirst} @click=${() => this._goToChapter(-1)}>
+              ← Capítulo anterior
+            </md-text-button>
+            <md-text-button ?disabled=${isLast} @click=${() => this._goToChapter(1)}>
+              Próximo capítulo →
+            </md-text-button>
+          </nav>
+        `
+      })()}
     `
   }
 

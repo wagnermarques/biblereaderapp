@@ -15,8 +15,16 @@ async function ensureFullIndex() {
   if (!allBooksLoaded) {
     allBooksLoaded = (async () => {
       const index = await bibleDataService.getIndex()
-      await Promise.all(index.map((b) => bibleDataService.getBook(b.id)))
-    })()
+      // Load books in small batches (4 at a time) to avoid saturating browser network connections
+      const CONCURRENCY = 4
+      for (let i = 0; i < index.length; i += CONCURRENCY) {
+        const batch = index.slice(i, i + CONCURRENCY)
+        await Promise.all(batch.map((b) => bibleDataService.getBook(b.id).catch(() => null)))
+      }
+    })().catch((err) => {
+      allBooksLoaded = null
+      throw err
+    })
   }
   return allBooksLoaded
 }
