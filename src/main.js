@@ -36,6 +36,17 @@ window.addEventListener('translation-change', (e) => {
   }, 0)
 })
 
+const RESERVED_ROUTES = new Set([
+  'conta',
+  'config',
+  'livros',
+  'biblias',
+  'marcacoes',
+  'pregacoes',
+  'sobre',
+  'search',
+])
+
 createAppShell({
   mount: '#app',
   title: 'Bíblia',
@@ -100,7 +111,13 @@ createAppShell({
     },
     {
       name: 'chapter',
-      match: pattern(':book/:chapter'),
+      match: (segments) => {
+        if (segments.length !== 2) return null
+        const [book, chapter] = segments
+        if (RESERVED_ROUTES.has(book)) return null
+        if (!/^\d+$/.test(chapter)) return null
+        return { book, chapter }
+      },
       title: ({ params }) => `${params.book} ${params.chapter}`,
       crumb: ({ params }) => [
         { label: 'Livros', href: '#/livros' },
@@ -117,7 +134,12 @@ createAppShell({
     },
     {
       name: 'book-chapters',
-      match: pattern(':book'),
+      match: (segments) => {
+        if (segments.length !== 1) return null
+        const [book] = segments
+        if (RESERVED_ROUTES.has(book)) return null
+        return { book }
+      },
       title: ({ params }) => params.book,
       crumb: ({ params }) => [
         { label: 'Livros', href: '#/livros' },
