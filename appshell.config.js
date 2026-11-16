@@ -13,6 +13,13 @@ export default defineAppShellConfig({
     requireConsent: true,
   },
   base: '/biblereaderapp/',
+  socialAuth: {
+    enabled: true,
+    googleClientId: '71632020257-bunqshu7n4ein9v46amajmk21ts25b5p.apps.googleusercontent.com',
+    microsoftClientId: '',
+    microsoftTenantId: 'common',
+    requestDriveScope: false,
+  },
   manifest: {
     name: 'Bíblia PWA',
     short_name: 'Bíblia',

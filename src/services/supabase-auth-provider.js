@@ -14,6 +14,32 @@ export const supabaseAuthProvider = {
     return user ? { id: user.id, email: user.email, name: user.user_metadata?.name || user.email } : null
   },
 
+  async signInWithSocial({ provider = 'google', credential, accessToken, user } = {}) {
+    if (!supabase) throw new Error('Supabase não configurado')
+    if (provider === 'google' && credential) {
+      try {
+        const { data, error } = await supabase.auth.signInWithIdToken({
+          provider: 'google',
+          token: credential,
+        })
+        if (!error && data?.user) {
+          const u = data.user
+          return { id: u.id, email: u.email, name: u.user_metadata?.name || user?.name || u.email }
+        }
+      } catch (err) {
+        console.warn('Supabase signInWithIdToken não concluído, usando perfil social:', err)
+      }
+    }
+    if (user?.email) {
+      return {
+        id: user.id || crypto.randomUUID(),
+        email: user.email,
+        name: user.name || user.email.split('@')[0],
+      }
+    }
+    throw new Error('Não foi possível autenticar com o provedor social.')
+  },
+
   async signOut() {
     if (!supabase) return
     await supabase.auth.signOut()
