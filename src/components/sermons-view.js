@@ -1,5 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import '@fzl/webcomponents-lit/reader-chapterview'
+import '@fzl/webcomponents-lit/google-doc-editor'
 import {
   storageService,
   formatSermonTitle,
@@ -365,6 +366,16 @@ export class SermonsView extends LitElement {
     }, 400)
   }
 
+  _onGoogleDocChange(e, sermon) {
+    const { docUrl, docId } = e.detail
+    storageService.updateSermon(sermon.id, {
+      googleDocUrl: docUrl || '',
+      googleDocId: docId || '',
+    })
+    this._reload()
+    this._showToast(docUrl ? 'Google Docs vinculado com sucesso!' : 'Documento desvinculado.')
+  }
+
   _removeVerse(verseId) {
     if (!this._activeSermonId) return
     storageService.removeVerseFromSermon(this._activeSermonId, verseId)
@@ -466,6 +477,14 @@ export class SermonsView extends LitElement {
                       <md-icon style="--md-icon-size:14px">bookmark</md-icon>
                       ${verseCount} ${verseCount === 1 ? 'versículo' : 'versículos'}
                     </span>
+                    ${sermon.googleDocUrl
+                      ? html`
+                          <span class="badge" style="background: rgba(66, 133, 244, 0.1); color: #1a73e8;">
+                            <md-icon style="--md-icon-size:14px">description</md-icon>
+                            Google Docs
+                          </span>
+                        `
+                      : ''}
                   </div>
                   ${sermon.remarks
                     ? html`<div class="preview">${sermon.remarks}</div>`
@@ -555,6 +574,15 @@ export class SermonsView extends LitElement {
                   })}
                 </div>
               `}
+        </div>
+
+        <div style="margin-top: 20px; margin-bottom: 20px;">
+          <fzl-google-doc-editor
+            .docUrl=${sermon.googleDocUrl || ''}
+            title=${sermon.title || 'Esboço da Pregação'}
+            description="Esboço e anotações completas vinculadas no Google Docs"
+            @fzl-doc-change=${(e) => this._onGoogleDocChange(e, sermon)}
+          ></fzl-google-doc-editor>
         </div>
 
         <div class="remarks-box">
